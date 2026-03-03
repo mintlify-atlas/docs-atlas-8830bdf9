@@ -1,0 +1,57 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "AWS Security Group Auditor",
+  "projectDescription": "A Python CLI tool to audit and manage unused AWS Security Groups across 20+ AWS services",
+  "theme": "aspen",
+  "primaryColor": "#FF9900",
+  "lightColor": "#232F3E",
+  "darkColor": "#FF9900",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Usage",
+        "pages": [
+          "usage/running-audit",
+          "usage/interpreting-results",
+          "usage/deleting-security-groups"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/supported-services",
+          "reference/aws-permissions",
+          "reference/log-files"
+        ]
+      },
+      {
+        "group": "Advanced",
+        "pages": [
+          "advanced/troubleshooting",
+          "advanced/best-practices",
+          "advanced/contributing"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Comprehensive audit of security groups across 20+ AWS services",
+    "Identifies unused security groups not associated with any resources",
+    "Interactive deletion prompt for cleanup",
+    "Detailed logging to account-specific log files",
+    "Support for EC2, ELB, RDS, ECS, EKS, Lambda, Redshift, ElastiCache, and more",
+    "Detects security group cross-references"
+  ],
+  "publicApiSurface": [
+    "check_sg_usage.py - Main CLI script",
+    "print_both() - Dual output function for console and log file"
+  ]
+}
