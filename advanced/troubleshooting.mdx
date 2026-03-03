@@ -1,0 +1,306 @@
+---
+title: Troubleshooting
+description: Common issues and solutions when running AWS Security Group Auditor
+---
+
+This guide helps you resolve common issues you may encounter when auditing AWS Security Groups.
+
+## Common errors
+
+<Accordion title="NoCredentialsError: Unable to locate credentials">
+  **Error message:**
+  ```
+  botocore.exceptions.NoCredentialsError: Unable to locate credentials
+  ```
+
+  **Cause:** AWS credentials are not configured on your system.
+
+  **Solution:**
+  <Steps>
+    <Step title="Configure AWS credentials">
+      Run `aws configure` and provide your AWS Access Key ID and Secret Access Key:
+      ```bash
+      aws configure
+      ```
+    </Step>
+    <Step title="Verify credentials">
+      Test your credentials by running:
+      ```bash
+      aws sts get-caller-identity
+      ```
+    </Step>
+    <Step title="Alternative: Use environment variables">
+      Set credentials as environment variables:
+      ```bash
+      export AWS_ACCESS_KEY_ID="your-access-key"
+      export AWS_SECRET_ACCESS_KEY="your-secret-key"
+      export AWS_DEFAULT_REGION="us-east-1"
+      ```
+    </Step>
+  </Steps>
+</Accordion>
+
+<Accordion title="ClientError: An error occurred (UnauthorizedOperation)">
+  **Error message:**
+  ```
+  botocore.exceptions.ClientError: An error occurred (UnauthorizedOperation) when calling 
+  the DescribeSecurityGroups operation: You are not authorized to perform this operation
+  ```
+
+  **Cause:** Your IAM user or role lacks required permissions.
+
+  **Solution:**
+  
+  Ensure your IAM policy includes these permissions:
+  ```json
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeInstances",
+          "ec2:DescribeVpcEndpoints",
+          "ec2:DescribeVpnConnections",
+          "ec2:DescribeCustomerGateways",
+          "elasticloadbalancing:DescribeLoadBalancers",
+          "rds:DescribeDBInstances",
+          "ecs:ListClusters",
+          "ecs:ListServices",
+          "ecs:DescribeServices",
+          "eks:ListClusters",
+          "eks:ListNodegroups",
+          "eks:DescribeNodegroup",
+          "codebuild:ListProjects",
+          "codebuild:BatchGetProjects",
+          "redshift:DescribeClusters",
+          "elasticache:DescribeCacheClusters",
+          "kafka:ListClusters",
+          "neptune:DescribeDBInstances",
+          "docdb:DescribeDBClusters",
+          "elasticbeanstalk:DescribeEnvironments",
+          "elasticbeanstalk:DescribeEnvironmentResources",
+          "sagemaker:ListEndpoints",
+          "sagemaker:DescribeEndpoint",
+          "transfer:ListServers",
+          "transfer:DescribeServer",
+          "glue:GetJobs",
+          "glue:GetConnection",
+          "es:ListDomainNames",
+          "es:DescribeElasticsearchDomain",
+          "mq:ListBrokers",
+          "mq:DescribeBroker",
+          "fsx:DescribeFileSystems",
+          "workspaces:DescribeWorkspaceDirectories",
+          "sts:GetCallerIdentity"
+        ],
+        "Resource": "*"
+      }
+    ]
+  }
+  ```
+
+  <Note>
+    For deletion operations, you also need `ec2:DeleteSecurityGroup` permission.
+  </Note>
+</Accordion>
+
+<Accordion title="ClientError: Request limit exceeded (RequestLimitExceeded)">
+  **Error message:**
+  ```
+  botocore.exceptions.ClientError: An error occurred (RequestLimitExceeded) when calling 
+  the DescribeInstances operation: Request limit exceeded
+  ```
+
+  **Cause:** AWS API throttling due to too many requests in a short time period.
+
+  **Solution:**
+  <Steps>
+    <Step title="Wait and retry">
+      AWS throttling is temporary. Wait a few minutes and run the script again.
+    </Step>
+    <Step title="Request a rate limit increase">
+      If you have many resources, consider requesting a service quota increase through the AWS Service Quotas console.
+    </Step>
+    <Step title="Run during off-peak hours">
+      Schedule audits during off-peak hours when your account has fewer API calls.
+    </Step>
+  </Steps>
+
+  <Tip>
+    The script automatically paginates through ECS services to avoid hitting the 10-service describe limit (check_sg_usage.py:122-139).
+  </Tip>
+</Accordion>
+
+<Accordion title="DependencyViolation: Resource has a dependent object">
+  **Error message:**
+  ```
+  Error al borrar el grupo de seguridad sg-xxxxxxxxx: An error occurred (DependencyViolation) 
+  when calling the DeleteSecurityGroup operation: resource sg-xxxxxxxxx has a dependent object
+  ```
+
+  **Cause:** The security group is referenced by another security group's rules or has resources still attached.
+
+  **Solution:**
+  <Steps>
+    <Step title="Check the audit log">
+      Review the `{account_id}_sg_log.txt` file to see if the security group is referenced by other security groups:
+      ```
+      Referenciado por otros SGs: sg-abc12345, sg-def67890
+      ```
+    </Step>
+    <Step title="Remove references first">
+      Before deleting, remove the security group from any rules that reference it in other security groups.
+    </Step>
+    <Step title="Verify no hidden associations">
+      Some associations (like Lambda functions in VPCs or Network Interfaces) may not be detected by the current version.
+    </Step>
+  </Steps>
+
+  <Warning>
+    The script checks security group references in ingress and egress rules (check_sg_usage.py:323-333), but a DependencyViolation error indicates the security group still has dependencies.
+  </Warning>
+</Accordion>
+
+<Accordion title="InvalidGroup.NotFound: The security group does not exist">
+  **Error message:**
+  ```
+  botocore.exceptions.ClientError: An error occurred (InvalidGroup.NotFound) when calling 
+  the DeleteSecurityGroup operation: The security group 'sg-xxxxxxxxx' does not exist
+  ```
+
+  **Cause:** The security group was already deleted or doesn't exist in the current region.
+
+  **Solution:**
+  - Verify you're running the script in the correct AWS region
+  - Check if the security group was deleted by another process
+  - Run a fresh audit to get current security group status
+</Accordion>
+
+<Accordion title="AccessDeniedException: User is not authorized for service APIs">
+  **Error message:**
+  ```
+  botocore.exceptions.ClientError: An error occurred (AccessDeniedException) when calling 
+  the ListClusters operation: User: arn:aws:iam::123456789012:user/username is not authorized 
+  to perform: eks:ListClusters
+  ```
+
+  **Cause:** Missing permissions for specific AWS service APIs (ECS, EKS, RDS, etc.).
+
+  **Solution:**
+  
+  The script requires read permissions for 20+ AWS services. If you don't use certain services, you can either:
+  - Add the missing permissions to your IAM policy (recommended)
+  - Modify the script to skip services you don't use
+
+  <Tip>
+    The script will continue checking other services even if one service fails. Check the error message to identify which service needs permissions.
+  </Tip>
+</Accordion>
+
+<Accordion title="EndpointConnectionError: Could not connect to the endpoint">
+  **Error message:**
+  ```
+  botocore.exceptions.EndpointConnectionError: Could not connect to the endpoint URL: 
+  "https://neptune.us-east-1.amazonaws.com/"
+  ```
+
+  **Cause:** Network connectivity issues or service not available in your region.
+
+  **Solution:**
+  <Steps>
+    <Step title="Check network connectivity">
+      Verify your internet connection and firewall settings allow HTTPS traffic to AWS endpoints.
+    </Step>
+    <Step title="Verify service availability">
+      Not all AWS services are available in all regions. Check the [AWS Regional Services List](https://aws.amazon.com/about-aws/global-infrastructure/regional-product-services/).
+    </Step>
+    <Step title="Check proxy settings">
+      If you're behind a corporate proxy, configure boto3 to use your proxy settings.
+    </Step>
+  </Steps>
+</Accordion>
+
+<Accordion title="ParamValidationError: Parameter validation failed">
+  **Error message:**
+  ```
+  botocore.exceptions.ParamValidationError: Parameter validation failed: Invalid type for 
+  parameter SecurityGroupIds[0], value: None, type: <class 'NoneType'>, valid types: <class 'str'>
+  ```
+
+  **Cause:** Unexpected None values or malformed data from AWS API responses.
+
+  **Solution:**
+  
+  This typically indicates a bug in the script or unexpected API response format. File an issue on the GitHub repository with:
+  - The full error message
+  - Which AWS service was being checked when the error occurred
+  - Your AWS region
+</Accordion>
+
+## Regional considerations
+
+<Note>
+  The script only checks security groups in the region configured in your AWS CLI or environment variables. To audit multiple regions, run the script separately for each region:
+  ```bash
+  export AWS_DEFAULT_REGION="us-east-1"
+  python check_sg_usage.py
+  
+  export AWS_DEFAULT_REGION="eu-west-1"
+  python check_sg_usage.py
+  ```
+</Note>
+
+## Output file issues
+
+### Cannot write to log file
+
+If you see permission errors when creating the log file:
+
+```
+PermissionError: [Errno 13] Permission denied: '123456789012_sg_log.txt'
+```
+
+**Solution:** Ensure you have write permissions in the current directory or run the script from a directory where you have write access.
+
+### Log file shows incomplete results
+
+If the script terminates early (check_sg_usage.py:44-364), the log file may be incomplete.
+
+**Solution:** 
+- Check for errors in the console output
+- Look for exception messages that stopped the script
+- The log file is flushed continuously, so partial results are still saved
+
+## Performance issues
+
+### Script runs very slowly
+
+The script checks 20+ AWS services sequentially for each security group.
+
+<Tip>
+  For accounts with many security groups (100+), expect the script to run for 15-30 minutes. The script shows progress: `Revisando el grupo de seguridad (45/150): sg-xxxxx`
+</Tip>
+
+**Optimization tips:**
+- Run during off-peak hours to avoid API throttling
+- Focus on specific VPCs by modifying the script
+- Consider implementing parallel processing for independent service checks
+
+## Getting help
+
+If you encounter an error not listed here:
+
+1. Check the `{account_id}_sg_log.txt` file for detailed output
+2. Search existing [GitHub Issues](https://github.com/rruisan/AWS-SecurityGroup-Auditor/issues)
+3. Create a new issue with:
+   - Full error message and stack trace
+   - Python version (`python --version`)
+   - boto3 version (`pip show boto3`)
+   - AWS region
+   - Anonymized log output showing the error
+
+<Warning>
+  Never share AWS credentials, account IDs, or sensitive resource identifiers in public issues.
+</Warning>

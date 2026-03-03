@@ -1,0 +1,272 @@
+---
+title: Deleting security groups
+description: Learn how to safely delete unused security groups using the interactive deletion prompt
+---
+
+After the audit completes, the tool offers an interactive prompt to delete unused security groups. This guide explains the deletion process, confirmation workflow, and error handling.
+
+## The interactive prompt
+
+When the audit identifies unused security groups, you'll see:
+
+```
+***RESULTADO***
+
+Los siguientes grupos de seguridad no tienen recursos asociados: sg-1a2b3c4d5e, sg-2b3c4d5e6f, sg-3c4d5e6f7g
+
+¿Quieres borrar estos grupos de seguridad? (sí/no):
+```
+
+The tool lists all security group IDs that have:
+- No attached resources (EC2 instances, load balancers, databases, etc.)
+- No references from other security groups
+
+<Warning>
+If **all** security groups in your account are in use, you'll see a different message:
+
+```
+***RESULTADO***
+
+Todos los grupos de seguridad tienen recursos asociados.
+```
+
+No deletion prompt will appear in this case.
+</Warning>
+
+## Confirmation process
+
+The tool accepts multiple variations for confirmation:
+
+### Accepting the deletion
+
+You can type any of the following (case-insensitive):
+- `sí` (Spanish for "yes")
+- `si` (without accent)
+- `s` (short form)
+- `yes` (English)
+- `y` (English short form)
+
+**Example**:
+```
+¿Quieres borrar estos grupos de seguridad? (sí/no): sí
+```
+
+### Declining the deletion
+
+Any other input (or typing `no`, `n`, `no`, etc.) will cancel the operation:
+
+```
+¿Quieres borrar estos grupos de seguridad? (sí/no): no
+
+No se ha borrado ningun grupo de seguridad.
+```
+
+<Note>
+The tool defaults to **NOT deleting** if your input doesn't match the acceptance keywords. This is a safety feature to prevent accidental deletions.
+</Note>
+
+## What happens when you delete
+
+When you confirm deletion by typing an accepted keyword:
+
+<Steps>
+  <Step title="Iteration begins">
+    The tool loops through each unused security group ID from the list.
+  </Step>
+
+  <Step title="Deletion attempt">
+    For each security group, the tool calls the AWS EC2 API to delete it:
+    
+    ```python
+    ec2.delete_security_group(GroupId=sg_id)
+    ```
+  </Step>
+
+  <Step title="Success confirmation">
+    If the deletion succeeds, you'll see:
+    
+    ```
+    Grupo de seguridad sg-1a2b3c4d5e borrado exitosamente.
+    
+    Grupo de seguridad sg-2b3c4d5e6f borrado exitosamente.
+    
+    Grupo de seguridad sg-3c4d5e6f7g borrado exitosamente.
+    ```
+    
+    Each successful deletion is confirmed individually.
+  </Step>
+
+  <Step title="Process completion">
+    After all security groups are processed, the script exits normally.
+  </Step>
+</Steps>
+
+## Error handling during deletion
+
+Deletion can fail for several reasons. The tool catches and displays errors:
+
+### Common deletion errors
+
+<Accordion title="Dependency violation error">
+  **Error message**:
+  ```
+  Error al borrar el grupo de seguridad sg-1a2b3c4d5e: An error occurred (DependencyViolation) when calling the DeleteSecurityGroup operation: resource sg-1a2b3c4d5e has a dependent object
+  ```
+  
+  **Cause**: Between the audit scan and the deletion attempt, a resource started using this security group, or another security group now references it.
+  
+  **Resolution**: Re-run the audit to get updated results.
+</Accordion>
+
+<Accordion title="Permission denied error">
+  **Error message**:
+  ```
+  Error al borrar el grupo de seguridad sg-2b3c4d5e6f: An error occurred (UnauthorizedOperation) when calling the DeleteSecurityGroup operation: You are not authorized to perform this operation.
+  ```
+  
+  **Cause**: Your AWS credentials lack the `ec2:DeleteSecurityGroup` permission.
+  
+  **Resolution**: Update your IAM policy to include deletion permissions.
+</Accordion>
+
+<Accordion title="Cannot delete default security group">
+  **Error message**:
+  ```
+  Error al borrar el grupo de seguridad sg-default123: An error occurred (CannotDelete) when calling the DeleteSecurityGroup operation: the specified group: "sg-default123" name: "default" cannot be deleted by a user
+  ```
+  
+  **Cause**: AWS does not allow deletion of default VPC security groups.
+  
+  **Resolution**: This is expected behavior. Default security groups cannot and should not be deleted.
+  
+  <Note>
+  The audit should not flag default security groups as unused if they're properly configured, but this error can occur in edge cases.
+  </Note>
+</Accordion>
+
+<Accordion title="Security group not found">
+  **Error message**:
+  ```
+  Error al borrar el grupo de seguridad sg-3c4d5e6f7g: An error occurred (InvalidGroup.NotFound) when calling the DeleteSecurityGroup operation: The security group 'sg-3c4d5e6f7g' does not exist
+  ```
+  
+  **Cause**: The security group was already deleted (possibly by another user or process) between the audit and deletion.
+  
+  **Resolution**: No action needed. The security group is already gone.
+</Accordion>
+
+### Partial deletion handling
+
+If some deletions succeed and others fail:
+
+```
+Grupo de seguridad sg-1a2b3c4d5e borrado exitosamente.
+
+Error al borrar el grupo de seguridad sg-2b3c4d5e6f: An error occurred (DependencyViolation)...
+
+Grupo de seguridad sg-3c4d5e6f7g borrado exitosamente.
+```
+
+The tool continues processing remaining security groups even if one fails. This ensures maximum cleanup even when some deletions encounter errors.
+
+<Tip>
+Review all error messages carefully. They provide specific details about why a deletion failed and what action (if any) is needed.
+</Tip>
+
+## The deletion is irreversible
+
+<Warning>
+**Deleting a security group is permanent and cannot be undone.**
+
+Once deleted:
+- The security group and all its rules are permanently removed
+- You cannot recover the security group configuration
+- You would need to manually recreate it if needed
+
+**Before confirming deletion**:
+1. Review the log file to confirm these security groups are truly unused
+2. Check the security group descriptions for context (old projects, temporary testing, etc.)
+3. Verify with your team that these security groups are no longer needed
+4. Consider exporting security group configurations for backup before deletion
+</Warning>
+
+## Best practices for safe deletion
+
+<Steps>
+  <Step title="Review the log file first">
+    Before accepting the deletion prompt, open the `{account_id}_sg_log.txt` file and verify each unused security group:
+    
+    ```
+    ------------------------------------------------
+    Revisando el grupo de seguridad (23/47): sg-1a2b3c4d5e (Old Test Environment)
+    
+    ```
+    
+    Ensure the description and ID match security groups you're comfortable deleting.
+  </Step>
+
+  <Step title="Document before deletion">
+    For compliance or rollback purposes, export security group rules before deletion:
+    
+    ```bash
+    aws ec2 describe-security-groups --group-ids sg-1a2b3c4d5e > sg-1a2b3c4d5e-backup.json
+    ```
+  </Step>
+
+  <Step title="Start with a test run">
+    On your first audit, decline the deletion (`no`) to review results without making changes. Run the audit again later when you're confident in the findings.
+  </Step>
+
+  <Step title="Delete in batches for large cleanups">
+    If you have many unused security groups, consider:
+    1. Running the audit
+    2. Declining the deletion
+    3. Manually deleting a few security groups as a test
+    4. Re-running the audit to delete remaining ones
+  </Step>
+</Steps>
+
+## Example deletion session
+
+Here's a complete example of the deletion workflow:
+
+```
+***RESULTADO***
+
+Los siguientes grupos de seguridad no tienen recursos asociados: sg-old-test-2023, sg-abandoned-project, sg-temp-migration
+
+¿Quieres borrar estos grupos de seguridad? (sí/no): sí
+Grupo de seguridad sg-old-test-2023 borrado exitosamente.
+
+Grupo de seguridad sg-abandoned-project borrado exitosamente.
+
+Grupo de seguridad sg-temp-migration borrado exitosamente.
+```
+
+## What if I accidentally delete a needed security group?
+
+If you delete a security group that was actually needed:
+
+1. **Immediate impact**: Resources that were using it may lose network connectivity or fail health checks
+2. **Recovery**: You must manually recreate the security group with the same rules
+3. **Mitigation**: Keep backup exports of your security group configurations
+
+<Warning>
+The audit tool checks for resource associations at the time of the scan. If a resource is created or associated **after** the audit but **before** you confirm deletion, the tool won't know about it. Always ensure no deployments are in progress when running deletions.
+</Warning>
+
+## Running without interactive deletion
+
+If you want to audit without the deletion prompt (for reporting only):
+
+1. Run the audit normally: `python check_sg_usage.py`
+2. When prompted, type `no` or press Ctrl+C to exit
+3. Review the log file: `cat {account_id}_sg_log.txt`
+4. Manually delete security groups through the AWS Console or CLI if needed
+
+## Next steps
+
+After deleting unused security groups:
+- Save the log file for audit records
+- Schedule regular audits (monthly or quarterly) to catch newly unused security groups
+- Review your security group tagging strategy to better track ownership and purpose

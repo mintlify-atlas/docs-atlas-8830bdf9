@@ -1,0 +1,85 @@
+---
+title: AWS Security Group Auditor
+description: A comprehensive Python CLI tool that audits AWS Security Groups to identify and clean up unused security groups across your AWS infrastructure
+---
+
+## What is AWS Security Group Auditor?
+
+AWS Security Group Auditor is a powerful Python CLI tool designed to help you maintain a clean and secure AWS infrastructure by identifying security groups that are no longer in use. The tool performs a comprehensive audit across 25+ AWS services, tracking which security groups are actively attached to resources and which are orphaned.
+
+<Note>
+The tool generates detailed logs showing every security group's associations, making it easy to understand your security posture before making any changes.
+</Note>
+
+## Why use this tool?
+
+As your AWS infrastructure grows, security groups can accumulate over time. Unused security groups create several problems:
+
+- **Security risks**: Orphaned security groups can be mistakenly attached to resources with unintended permissions
+- **Management overhead**: Clutter makes it harder to understand your actual security configuration
+- **Compliance challenges**: Auditing becomes more complex with unnecessary security groups
+- **Cost of complexity**: More resources to track and manage during security reviews
+
+This tool solves these problems by providing complete visibility into security group usage and offering safe cleanup options.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Comprehensive scanning" icon="magnifying-glass">
+    Audits security groups across 25+ AWS services including EC2, RDS, ECS, EKS, Lambda, ElastiCache, and more
+  </Card>
+  
+  <Card title="Cross-reference detection" icon="link">
+    Identifies security groups referenced by other security groups, even if not directly attached to resources
+  </Card>
+  
+  <Card title="Detailed logging" icon="file-lines">
+    Generates account-specific log files showing every security group and its associated resources
+  </Card>
+  
+  <Card title="Safe deletion" icon="shield-check">
+    Interactive prompts prevent accidental deletion, with full error handling for groups that can't be removed
+  </Card>
+</CardGroup>
+
+## Supported AWS services
+
+The auditor checks security group associations across:
+
+- **Compute**: EC2 instances, ECS services, EKS clusters, Elastic Beanstalk, Lambda
+- **Load Balancing**: Classic ELB, Application Load Balancers (ALB), Network Load Balancers (NLB)
+- **Databases**: RDS, Neptune, DocumentDB, Redshift, ElastiCache
+- **Networking**: VPC Endpoints, VPN Connections, Transfer Family servers
+- **Analytics & Data**: Amazon MSK (Kafka), Glue, Elasticsearch Service
+- **Storage**: Amazon FSx file systems
+- **Development**: CodeBuild projects, SageMaker endpoints
+- **Messaging**: Amazon MQ brokers
+- **Other**: WorkSpaces directories, and more
+
+## How it works
+
+The tool follows a systematic approach:
+
+1. Connects to your AWS account using boto3 and retrieves your account ID
+2. Lists all security groups in your account
+3. Iterates through each security group, checking associations across all supported services
+4. Tracks which security groups are in use and which are orphaned
+5. Generates a detailed log file named `{account_id}_sg_log.txt`
+6. Presents a summary of unused security groups
+7. Optionally deletes unused security groups with your confirmation
+
+<Warning>
+The tool can delete security groups from your AWS account. Always review the log file before confirming any deletions.
+</Warning>
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Python dependencies and configure AWS credentials
+  </Card>
+  
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Run your first security group audit in minutes
+  </Card>
+</CardGroup>

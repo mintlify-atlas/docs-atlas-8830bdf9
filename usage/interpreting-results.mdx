@@ -1,0 +1,256 @@
+---
+title: Interpreting results
+description: Understand the audit output format and learn how to identify which resources use which security groups
+---
+
+The audit generates a detailed log file that shows every security group and its associated resources. This guide helps you understand the output format and interpret the results.
+
+## Log file location
+
+The audit creates a log file named after your AWS account ID:
+
+```
+{account_id}_sg_log.txt
+```
+
+**Example**: `123456789012_sg_log.txt`
+
+This file is created in the same directory where you executed `check_sg_usage.py`.
+
+## Output structure
+
+The log file contains three main sections:
+
+### 1. Header section
+
+The file begins with the account identification:
+
+```
+Verificación de uso de grupos de seguridad para la cuenta AWS: 123456789012
+```
+
+This confirms which AWS account was audited.
+
+### 2. Security group analysis section
+
+Each security group is analyzed in a dedicated section:
+
+```
+------------------------------------------------
+Revisando el grupo de seguridad (5/47): sg-0a1b2c3d4e5f6g7h8 (Web Server Security Group)
+	Instancia EC2 asociada: i-0a1b2c3d4e5f6g7h8, Estado: running
+	ALB/NLB Asociado: production-alb
+	Referenciado por otros SGs: sg-9i8h7g6f5e4d3c2b1
+```
+
+**Format breakdown**:
+- **Separator line**: `------------------------------------------------` marks the start of each security group
+- **Header line**: Shows the progress counter `(5/47)`, security group ID `sg-0a1b2c3d4e5f6g7h8`, and description `(Web Server Security Group)`
+- **Association lines**: Indented with tabs, listing each resource using this security group
+
+### 3. Results summary section
+
+The file ends with:
+
+```
+Proceso completado.
+
+***RESULTADO***
+
+Los siguientes grupos de seguridad no tienen recursos asociados: sg-1a2b3c4d5e, sg-2b3c4d5e6f, sg-3c4d5e6f7g
+```
+
+Or if all security groups are in use:
+
+```
+***RESULTADO***
+
+Todos los grupos de seguridad tienen recursos asociados.
+```
+
+## Understanding "associated" vs "not associated"
+
+A security group is considered **associated** (in use) if:
+
+<Accordion title="It's attached to EC2 instances">
+  ```
+  	Instancia EC2 asociada: i-0a1b2c3d4e5f6g7h8, Estado: running
+  ```
+  
+  The security group is attached to one or more EC2 instances. The instance ID and current state (running, stopped, etc.) are shown.
+</Accordion>
+
+<Accordion title="It's used by load balancers">
+  **Classic Load Balancer**:
+  ```
+  	ELB Clásico Asociado: production-elb
+  ```
+  
+  **Application/Network Load Balancer**:
+  ```
+  	ALB/NLB Asociado: production-alb
+  ```
+</Accordion>
+
+<Accordion title="It's attached to RDS databases">
+  ```
+  	Instancia RDS Asociada: production-db
+  ```
+  
+  The security group is used by an RDS database instance.
+</Accordion>
+
+<Accordion title="It's used by ECS services">
+  ```
+  	ECS Servicio Asociado: web-service en Cluster: arn:aws:ecs:us-east-1:123456789012:cluster/production
+  ```
+  
+  The security group is attached to an ECS service with AWSVPC networking mode.
+</Accordion>
+
+<Accordion title="It's associated with EKS node groups">
+  ```
+  	EKS Clúster: production-cluster, Grupo de Nodos: main-nodegroup, SG Asociado: sg-0a1b2c3d4e5f6g7h8
+  ```
+</Accordion>
+
+<Accordion title="It's used by other AWS services">
+  The tool checks 20+ AWS services including:
+  - **CodeBuild**: `	Proyecto CodeBuild Asociado: build-project`
+  - **Redshift**: `	Clúster Redshift Asociado: analytics-cluster`
+  - **ElastiCache**: `	Instancia ElastiCache Asociada: redis-cache`
+  - **MSK (Kafka)**: `	Clúster Kafka Asociado: events-kafka`
+  - **Neptune**: `	Instancia Neptune Asociada: graph-db`
+  - **DocumentDB**: `	Clúster DocumentDB Asociado: document-store`
+  - **Elastic Beanstalk**: `	Entorno Elastic Beanstalk Asociado: production-env`
+  - **SageMaker**: `	Endpoint de SageMaker Asociado: ml-endpoint`
+  - **Transfer Family**: `	Servidor AWS Transfer Family Asociado: s-1234567890abcdef0`
+  - **Glue**: `	Trabajo de Glue Asociado: etl-job`
+  - **Elasticsearch**: `	Dominio de Elasticsearch Asociado: logs-domain`
+  - **Amazon MQ**: `	Broker de Amazon MQ Asociado: message-broker`
+  - **FSx**: `	Sistema de archivos Amazon FSx Asociado: fs-0a1b2c3d4e5f6g7h8`
+  - **WorkSpaces**: `	Directorio Amazon WorkSpaces Asociado: d-1234567890`
+  - **VPC Endpoints**: `	VPC Endpoint con SG: vpce-0a1b2c3d4e5f6g7h8`
+</Accordion>
+
+<Accordion title="It's referenced by other security groups">
+  ```
+  	Referenciado por otros SGs: sg-9i8h7g6f5e4d3c2b1, sg-2c3d4e5f6g7h8i9j0
+  ```
+  
+  Other security groups use this security group ID in their inbound or outbound rules. This is a common pattern for allowing traffic between resource tiers.
+  
+  <Warning>
+  Even if a security group has no direct resource attachments, it's considered "in use" if other security groups reference it in their rules.
+  </Warning>
+</Accordion>
+
+A security group is **not associated** (unused) if:
+- It has no resources attached to it
+- No other security groups reference it in their rules
+- The section for that security group shows only the header with no indented association lines
+
+## Reading the output sections
+
+### Example: Security group with associations
+
+```
+------------------------------------------------
+Revisando el grupo de seguridad (12/47): sg-0a1b2c3d4e5f6g7h8 (Production Web Tier)
+	Instancia EC2 asociada: i-0a1b2c3d4e5f6g7h8, Estado: running
+	Instancia EC2 asociada: i-1b2c3d4e5f6g7h8i9, Estado: running
+	ALB/NLB Asociado: prod-web-alb
+	Referenciado por otros SGs: sg-database-tier
+
+```
+
+**What this tells you**:
+- This security group is **actively in use**
+- It protects 2 running EC2 instances
+- It's attached to an Application Load Balancer
+- The database tier security group references this SG (likely allowing traffic from web to database)
+- This security group should **NOT** be deleted
+
+### Example: Security group without associations
+
+```
+------------------------------------------------
+Revisando el grupo de seguridad (23/47): sg-2c3d4e5f6g7h8i9j0 (Old Test Environment)
+
+```
+
+**What this tells you**:
+- No indented lines appear after the header
+- This security group has **no associated resources**
+- It's safe to delete (but verify the description to ensure it's not needed)
+- This will appear in the final results summary as unused
+
+## Identifying which resources use which security groups
+
+To find all resources using a specific security group:
+
+1. Search the log file for the security group ID (e.g., `sg-0a1b2c3d4e5f6g7h8`)
+2. Look at all the indented lines in that section
+3. Each indented line represents a resource attachment
+
+**Example query**: "What uses security group sg-0a1b2c3d4e5f6g7h8?"
+
+```
+------------------------------------------------
+Revisando el grupo de seguridad (8/47): sg-0a1b2c3d4e5f6g7h8 (Application Tier)
+	Instancia EC2 asociada: i-app-server-1, Estado: running
+	Instancia EC2 asociada: i-app-server-2, Estado: running
+	Instancia EC2 asociada: i-app-server-3, Estado: stopped
+	ECS Servicio Asociado: api-service en Cluster: arn:aws:ecs:us-east-1:123456789012:cluster/prod
+	Referenciado por otros SGs: sg-cache-tier, sg-database-tier
+```
+
+**Answer**: This security group is used by:
+- 3 EC2 instances (2 running, 1 stopped)
+- 1 ECS service
+- Referenced by 2 other security groups
+
+<Tip>
+Use your text editor's search function (Ctrl+F or Cmd+F) to quickly find specific security group IDs in the log file.
+</Tip>
+
+## Common patterns in results
+
+### Pattern 1: Default VPC security group
+
+```
+------------------------------------------------
+Revisando el grupo de seguridad (1/47): sg-default123 (default VPC security group)
+
+```
+
+<Note>
+Default security groups often appear unused but cannot be deleted. AWS creates them automatically for each VPC.
+</Note>
+
+### Pattern 2: Security group used only for references
+
+```
+------------------------------------------------
+Revisando el grupo de seguridad (15/47): sg-bastion-source (Bastion Host Source)
+	Referenciado por otros SGs: sg-web-tier, sg-app-tier, sg-db-tier
+```
+
+This security group has no direct attachments but is referenced by other security groups. It's actively in use.
+
+### Pattern 3: Orphaned security groups
+
+```
+------------------------------------------------
+Revisando el grupo de seguridad (34/47): sg-old-project-2023 (Legacy Project SG)
+
+```
+
+No associations and no references indicate this is truly unused and can be safely deleted.
+
+## Next steps
+
+After reviewing the results:
+- [Delete unused security groups](/usage/deleting-security-groups) through the interactive prompt
+- Archive the log file for compliance and audit records
+- Re-run the audit periodically to catch newly unused security groups

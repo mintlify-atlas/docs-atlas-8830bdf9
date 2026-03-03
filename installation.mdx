@@ -1,0 +1,228 @@
+---
+title: Installation
+description: Install AWS Security Group Auditor and configure your environment to start auditing security groups
+---
+
+## Prerequisites
+
+Before installing AWS Security Group Auditor, ensure you have the following:
+
+- **Python 3.x**: The tool requires Python 3 or higher
+- **AWS Account**: An active AWS account with security groups to audit
+- **AWS Permissions**: IAM permissions to read security groups and various AWS services
+
+<Note>
+You'll need read permissions for EC2, ELB, RDS, ECS, EKS, and other AWS services the tool audits. For deletion capabilities, you'll also need `ec2:DeleteSecurityGroup` permission.
+</Note>
+
+## Install dependencies
+
+The AWS Security Group Auditor uses boto3, the AWS SDK for Python, to interact with AWS services.
+
+<Steps>
+  <Step title="Install boto3">
+    Install boto3 using pip:
+
+    <CodeGroup>
+    ```bash pip
+    pip install boto3
+    ```
+
+    ```bash pip3
+    pip3 install boto3
+    ```
+    </CodeGroup>
+
+    <Tip>
+    If you're using Python 3 specifically, use `pip3` to ensure boto3 is installed for the correct Python version.
+    </Tip>
+  </Step>
+
+  <Step title="Verify installation">
+    Verify that boto3 was installed successfully:
+
+    ```bash
+    python3 -c "import boto3; print(boto3.__version__)"
+    ```
+
+    You should see the boto3 version number printed to the console.
+  </Step>
+</Steps>
+
+## Configure AWS credentials
+
+The tool uses boto3's standard credential chain to authenticate with AWS. You need to configure your AWS credentials before running the auditor.
+
+<Steps>
+  <Step title="Choose a credential method">
+    Boto3 supports multiple authentication methods. Choose the one that best fits your environment:
+
+    - **AWS CLI configuration files** (recommended for local development)
+    - **Environment variables**
+    - **IAM roles** (recommended for EC2 instances)
+    - **AWS SSO**
+  </Step>
+
+  <Step title="Configure using AWS CLI (recommended)">
+    The easiest method is using the AWS CLI to configure credentials:
+
+    ```bash
+    aws configure
+    ```
+
+    Enter your credentials when prompted:
+
+    ```
+    AWS Access Key ID [None]: YOUR_ACCESS_KEY
+    AWS Secret Access Key [None]: YOUR_SECRET_KEY
+    Default region name [None]: us-east-1
+    Default output format [None]: json
+    ```
+
+    This creates credential files at `~/.aws/credentials` and `~/.aws/config`.
+  </Step>
+
+  <Step title="Alternative: Use environment variables">
+    You can also set credentials using environment variables:
+
+    ```bash
+    export AWS_ACCESS_KEY_ID=YOUR_ACCESS_KEY
+    export AWS_SECRET_ACCESS_KEY=YOUR_SECRET_KEY
+    export AWS_DEFAULT_REGION=us-east-1
+    ```
+  </Step>
+
+  <Step title="Verify AWS access">
+    Test your credentials by checking your account identity:
+
+    ```bash
+    aws sts get-caller-identity
+    ```
+
+    You should see output containing your account ID, user ID, and ARN.
+  </Step>
+</Steps>
+
+<Warning>
+Never commit AWS credentials to version control. Use environment variables, credential files, or IAM roles instead of hardcoding credentials.
+</Warning>
+
+## Download the tool
+
+Download or clone the `check_sg_usage.py` script to your local environment:
+
+```bash
+# If using git
+git clone <repository-url>
+cd AWS-SecurityGroup-Auditor
+
+# Or download the script directly
+curl -O <script-url>/check_sg_usage.py
+```
+
+## Verify installation
+
+Ensure the script is executable and your environment is properly configured:
+
+<Steps>
+  <Step title="Check Python version">
+    ```bash
+    python3 --version
+    ```
+    
+    Verify you're running Python 3.x or higher.
+  </Step>
+
+  <Step title="Test boto3 and AWS connection">
+    Run a quick test to verify boto3 can connect to AWS:
+
+    ```python
+    python3 -c "import boto3; print('Account:', boto3.client('sts').get_caller_identity()['Account'])"
+    ```
+
+    This should print your AWS account ID.
+  </Step>
+
+  <Step title="Check script permissions">
+    Ensure the script is readable:
+
+    ```bash
+    ls -l check_sg_usage.py
+    ```
+  </Step>
+</Steps>
+
+## Required IAM permissions
+
+Your AWS credentials need the following permissions to run the auditor:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeInstances",
+        "ec2:DescribeVpcEndpoints",
+        "ec2:DescribeVpnConnections",
+        "ec2:DescribeCustomerGateways",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "rds:DescribeDBInstances",
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "ecs:DescribeServices",
+        "eks:ListClusters",
+        "eks:ListNodegroups",
+        "eks:DescribeNodegroup",
+        "codebuild:ListProjects",
+        "codebuild:BatchGetProjects",
+        "redshift:DescribeClusters",
+        "elasticache:DescribeCacheClusters",
+        "kafka:ListClusters",
+        "neptune:DescribeDBInstances",
+        "docdb:DescribeDBClusters",
+        "elasticbeanstalk:DescribeEnvironments",
+        "elasticbeanstalk:DescribeEnvironmentResources",
+        "sagemaker:ListEndpoints",
+        "sagemaker:DescribeEndpoint",
+        "transfer:ListServers",
+        "transfer:DescribeServer",
+        "glue:GetJobs",
+        "glue:GetConnection",
+        "es:ListDomainNames",
+        "es:DescribeElasticsearchDomain",
+        "mq:ListBrokers",
+        "mq:DescribeBroker",
+        "fsx:DescribeFileSystems",
+        "workspaces:DescribeWorkspaceDirectories",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ec2:DeleteSecurityGroup",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ec2:ResourceTag/ManagedBy": "YourTeam"
+        }
+      }
+    }
+  ]
+}
+```
+
+<Tip>
+The deletion permission includes a condition tag as an example. Adjust this to match your organization's security policies.
+</Tip>
+
+## Next steps
+
+You're now ready to run your first security group audit! Continue to the Quick Start guide to learn how to use the tool.
+
+<Card title="Quick start guide" icon="rocket" href="/quickstart">
+  Run your first audit and identify unused security groups
+</Card>

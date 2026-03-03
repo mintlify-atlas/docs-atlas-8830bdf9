@@ -1,0 +1,507 @@
+---
+title: Log files
+description: Understanding the log file format, naming conventions, and how to parse audit results
+---
+
+The AWS Security Group Auditor creates a detailed log file for each execution, capturing all findings about security group associations across your AWS account.
+
+## Log file naming
+
+Log files use a standardized naming convention based on your AWS account ID:
+
+```
+{account_id}_sg_log.txt
+```
+
+<CardGroup cols={2}>
+  <Card title="Example" icon="file">
+    ```
+    123456789012_sg_log.txt
+    ```
+    
+    For AWS account `123456789012`
+  </Card>
+
+  <Card title="Account detection" icon="id-card">
+    ```python
+    # Source: check_sg_usage.py:33-37
+    sts = boto3.client('sts')
+    account_id = sts.get_caller_identity()["Account"]
+    output_file = f"{account_id}_sg_log.txt"
+    ```
+  </Card>
+</CardGroup>
+
+<Note>
+  The account ID is automatically detected using the STS `GetCallerIdentity` API, so the log file name always matches the account being audited.
+</Note>
+
+## Log file location
+
+The log file is created in the **current working directory** where you run the script:
+
+```bash
+# If you run the script from /home/user/audits/
+cd /home/user/audits/
+python check_sg_usage.py
+
+# Log file will be created at:
+# /home/user/audits/123456789012_sg_log.txt
+```
+
+## Log file format
+
+The log file contains both console output and detailed audit results. Here's the structure:
+
+### Header section
+
+```
+Verificación de uso de grupos de seguridad para la cuenta AWS: 123456789012
+```
+
+The header identifies the AWS account being audited.
+
+### Security group sections
+
+Each security group is audited in sequence with progress tracking:
+
+```
+------------------------------------------------
+Revisando el grupo de seguridad (1/45): sg-0abc123def456789 (default VPC security group)
+	Instancia EC2 asociada: i-0abc123def456789, Estado: running
+	ALB/NLB Asociado: my-application-load-balancer
+	Instancia RDS Asociada: my-database-instance
+```
+
+<Accordion title="Understanding the security group section format">
+  Each section contains:
+  
+  1. **Separator line**: `------------------------------------------------`
+  2. **Security group header**: Shows progress (current/total), security group ID, and description
+  3. **Resource associations**: Indented lines (with `\t`) showing each associated resource
+  4. **Blank line**: Separates each security group's results
+
+  ```python
+  # Source: check_sg_usage.py:61-66
+  current_sg_number += 1
+  sg_id = sg['GroupId']
+  sg_description = sg['Description']
+  print_both("------------------------------------------------", log_file)
+  print_both(f"Revisando el grupo de seguridad ({current_sg_number}/{total_security_groups}): {sg_id} ({sg_description})", log_file)
+  ```
+</Accordion>
+
+### Resource association entries
+
+Each associated resource is logged with a tab-indented line:
+
+<CodeGroup>
+```txt EC2 Instances
+	Instancia EC2 asociada: i-0abc123def456789, Estado: running
+	Instancia EC2 asociada: i-0def456ghi789012, Estado: stopped
+```
+
+```txt Load Balancers
+	ELB Clásico Asociado: my-classic-elb
+	ALB/NLB Asociado: my-app-lb
+```
+
+```txt Databases
+	Instancia RDS Asociada: prod-mysql-db
+	Instancia Neptune Asociada: graph-db-instance
+	Clúster DocumentDB Asociado: docdb-cluster-1
+	Clúster Redshift Asociado: analytics-cluster
+```
+
+```txt Containers
+	ECS Servicio Asociado: web-service en Cluster: arn:aws:ecs:us-east-1:123456789012:cluster/prod-cluster
+	EKS Clúster: my-cluster, Grupo de Nodos: ng-1, SG Asociado: sg-0abc123def456789
+```
+
+```txt Other Services
+	Proyecto CodeBuild Asociado: my-build-project
+	Instancia ElastiCache Asociada: redis-cache-001
+	Clúster Kafka Asociado: msk-streaming-cluster
+	Endpoint de SageMaker Asociado: ml-model-endpoint
+	Trabajo de Glue Asociado: etl-job-1
+	Dominio de Elasticsearch Asociado: search-domain
+	Broker de Amazon MQ Asociado: message-broker
+	Sistema de archivos Amazon FSx Asociado: fs-0abc123def456789
+	Directorio Amazon WorkSpaces Asociado: d-0abc123def456789
+	VPC Endpoint con SG: vpce-0abc123def456789
+	Entorno Elastic Beanstalk Asociado: my-app-env (e-abc123def4)
+	Servidor AWS Transfer Family Asociado: s-0abc123def456789
+	Conexión VPN Site-to-Site Asociada: vpn-0abc123def456789
+```
+
+```txt Cross-references
+	Referenciado por otros SGs: sg-0aaa111bbb222ccc, sg-0ddd333eee444fff
+```
+</CodeGroup>
+
+### Results summary
+
+At the end of the log file, you'll find the final results:
+
+```
+Proceso completado.
+
+***RESULTADO***
+
+Los siguientes grupos de seguridad no tienen recursos asociados: sg-0abc123, sg-0def456, sg-0ghi789
+```
+
+Or if all security groups are in use:
+
+```
+Proceso completado.
+
+***RESULTADO***
+
+Todos los grupos de seguridad tienen recursos asociados.
+```
+
+<Note>
+  The deletion prompt (`¿Quieres borrar estos grupos de seguridad?`) only appears in the console, not in the log file.
+</Note>
+
+## Log file code implementation
+
+The tool uses a custom function to write to both console and log file simultaneously:
+
+```python
+# Source: check_sg_usage.py:4-7
+def print_both(message, file):
+    print(message)
+    print(message, file=file)
+```
+
+```python
+# Source: check_sg_usage.py:44-46
+with open(output_file, 'w') as log_file:
+    print_both(f"\nVerificación de uso de grupos de seguridad para la cuenta AWS: {account_id}", log_file)
+    # ... rest of the audit logic
+```
+
+## Parsing log files
+
+### Extract unused security groups
+
+Find the results section and extract unused security group IDs:
+
+```bash
+# Using grep and sed
+grep "no tienen recursos asociados" 123456789012_sg_log.txt | \
+  sed 's/.*asociados: //' | \
+  tr ',' '\n' | \
+  sed 's/^ //g'
+```
+
+```python
+# Using Python
+import re
+
+with open('123456789012_sg_log.txt', 'r') as f:
+    content = f.read()
+    match = re.search(r'no tienen recursos asociados: (.+)', content)
+    if match:
+        unused_sgs = [sg.strip() for sg in match.group(1).split(',')]
+        print(unused_sgs)
+```
+
+### Find all EC2 instances using a specific security group
+
+```bash
+# Extract security group section and find EC2 instances
+awk '/sg-0abc123def456789/,/^$/' 123456789012_sg_log.txt | \
+  grep "Instancia EC2 asociada"
+```
+
+```python
+# Using Python
+import re
+
+def find_ec2_for_sg(log_file, sg_id):
+    with open(log_file, 'r') as f:
+        content = f.read()
+    
+    # Find the section for this security group
+    pattern = rf'{sg_id}.*?\n(.*?)(?=\n----|$)'
+    match = re.search(pattern, content, re.DOTALL)
+    
+    if match:
+        section = match.group(1)
+        instances = re.findall(r'Instancia EC2 asociada: (i-[a-f0-9]+)', section)
+        return instances
+    return []
+
+instances = find_ec2_for_sg('123456789012_sg_log.txt', 'sg-0abc123def456789')
+print(f"Found {len(instances)} EC2 instances: {instances}")
+```
+
+### Generate CSV report
+
+Convert the log file into a structured CSV format:
+
+```python
+import csv
+import re
+
+def parse_log_to_csv(log_file, output_csv):
+    security_groups = {}
+    current_sg = None
+    
+    with open(log_file, 'r') as f:
+        for line in f:
+            # Match security group header
+            sg_match = re.match(r'Revisando el grupo de seguridad.*?: (sg-[a-f0-9]+) \((.+)\)', line)
+            if sg_match:
+                current_sg = sg_match.group(1)
+                security_groups[current_sg] = {
+                    'id': current_sg,
+                    'description': sg_match.group(2),
+                    'resources': []
+                }
+            
+            # Match resource associations
+            elif line.startswith('\t') and current_sg:
+                resource = line.strip()
+                security_groups[current_sg]['resources'].append(resource)
+    
+    # Write to CSV
+    with open(output_csv, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Security Group ID', 'Description', 'Resource Count', 'Resources'])
+        
+        for sg_id, data in security_groups.items():
+            resources_str = '; '.join(data['resources'])
+            writer.writerow([
+                data['id'],
+                data['description'],
+                len(data['resources']),
+                resources_str
+            ])
+
+parse_log_to_csv('123456789012_sg_log.txt', 'sg_audit_report.csv')
+```
+
+### Count resources by service type
+
+```python
+import re
+from collections import Counter
+
+def count_resources_by_service(log_file):
+    services = Counter()
+    
+    with open(log_file, 'r') as f:
+        for line in f:
+            if line.startswith('\t'):
+                # Extract service type from resource line
+                if 'EC2 asociada' in line:
+                    services['EC2'] += 1
+                elif 'ELB Clásico' in line:
+                    services['Classic ELB'] += 1
+                elif 'ALB/NLB' in line:
+                    services['ALB/NLB'] += 1
+                elif 'RDS Asociada' in line:
+                    services['RDS'] += 1
+                elif 'ECS Servicio' in line:
+                    services['ECS'] += 1
+                elif 'EKS Clúster' in line:
+                    services['EKS'] += 1
+                elif 'ElastiCache' in line:
+                    services['ElastiCache'] += 1
+                # Add more service patterns as needed
+    
+    return services
+
+services = count_resources_by_service('123456789012_sg_log.txt')
+for service, count in services.most_common():
+    print(f"{service}: {count}")
+```
+
+## Log file search patterns
+
+Use these patterns to quickly find information:
+
+<AccordionGroup>
+  <Accordion title="Find all unused security groups">
+    ```bash
+    grep "no tienen recursos asociados" 123456789012_sg_log.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Find security groups with no associations">
+    ```bash
+    # Find SG sections with no indented resource lines
+    awk '/Revisando el grupo de seguridad/ {sg=$0; empty=1} 
+         /^\t/ {empty=0} 
+         /^--/ && empty && sg {print sg; sg=""; empty=1}' 123456789012_sg_log.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Find all RDS instances">
+    ```bash
+    grep "Instancia RDS Asociada" 123456789012_sg_log.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Find security groups referenced by other SGs">
+    ```bash
+    grep "Referenciado por otros SGs" 123456789012_sg_log.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Count total security groups audited">
+    ```bash
+    grep -c "Revisando el grupo de seguridad" 123456789012_sg_log.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Find all VPC endpoints">
+    ```bash
+    grep "VPC Endpoint con SG" 123456789012_sg_log.txt
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Log rotation and retention
+
+<Warning>
+  The tool **overwrites** the log file on each run. If you need historical audit data, implement a backup strategy.
+</Warning>
+
+### Backup strategy example
+
+```bash
+#!/bin/bash
+# backup-and-run.sh
+
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+LOG_FILE="${ACCOUNT_ID}_sg_log.txt"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# Backup existing log if it exists
+if [ -f "$LOG_FILE" ]; then
+    mv "$LOG_FILE" "logs/archive/${LOG_FILE%.txt}_${TIMESTAMP}.txt"
+fi
+
+# Run the audit
+python check_sg_usage.py
+
+# Optionally compress old logs
+find logs/archive -name "*.txt" -mtime +30 -exec gzip {} \;
+```
+
+## Integration with monitoring tools
+
+### Send results to CloudWatch
+
+```python
+import boto3
+import re
+
+def send_metrics_to_cloudwatch(log_file):
+    cloudwatch = boto3.client('cloudwatch')
+    
+    # Parse results
+    with open(log_file, 'r') as f:
+        content = f.read()
+    
+    # Count unused SGs
+    match = re.search(r'no tienen recursos asociados: (.+)', content)
+    unused_count = len(match.group(1).split(',')) if match else 0
+    
+    # Send metric
+    cloudwatch.put_metric_data(
+        Namespace='SecurityGroupAudit',
+        MetricData=[
+            {
+                'MetricName': 'UnusedSecurityGroups',
+                'Value': unused_count,
+                'Unit': 'Count'
+            }
+        ]
+    )
+
+send_metrics_to_cloudwatch('123456789012_sg_log.txt')
+```
+
+### Send alerts via SNS
+
+```python
+import boto3
+import re
+
+def alert_if_unused_sgs(log_file, sns_topic_arn):
+    sns = boto3.client('sns')
+    
+    with open(log_file, 'r') as f:
+        content = f.read()
+    
+    match = re.search(r'no tienen recursos asociados: (.+)', content)
+    if match:
+        unused_sgs = match.group(1)
+        sns.publish(
+            TopicArn=sns_topic_arn,
+            Subject='Unused Security Groups Found',
+            Message=f'The following security groups are unused:\n{unused_sgs}'
+        )
+
+alert_if_unused_sgs(
+    '123456789012_sg_log.txt',
+    'arn:aws:sns:us-east-1:123456789012:security-alerts'
+)
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Log file not created">
+    **Possible causes**:
+    - No write permissions in current directory
+    - Script crashed before opening the log file
+    - STS `GetCallerIdentity` failed
+
+    **Solution**:
+    ```bash
+    # Check permissions
+    ls -la .
+    
+    # Verify AWS credentials
+    aws sts get-caller-identity
+    
+    # Run with verbose error handling
+    python -u check_sg_usage.py 2>&1 | tee debug.log
+    ```
+  </Accordion>
+
+  <Accordion title="Log file incomplete">
+    **Possible causes**:
+    - Script crashed mid-execution
+    - Timeout on API calls
+    - Permission denied on specific services
+
+    **Solution**:
+    Check the last line of the log file. If it doesn't contain "Proceso completado", the script failed:
+    
+    ```bash
+    tail -5 123456789012_sg_log.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Character encoding issues">
+    The log file uses UTF-8 encoding with Spanish text. If you see garbled characters:
+    
+    ```bash
+    # Linux/Mac - specify encoding
+    file -i 123456789012_sg_log.txt
+    iconv -f UTF-8 -t ASCII//TRANSLIT 123456789012_sg_log.txt > output.txt
+    
+    # Python - read with explicit encoding
+    with open('123456789012_sg_log.txt', 'r', encoding='utf-8') as f:
+        content = f.read()
+    ```
+  </Accordion>
+</AccordionGroup>

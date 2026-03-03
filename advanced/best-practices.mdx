@@ -1,0 +1,346 @@
+---
+title: Best practices
+description: Recommended practices for safely auditing and managing AWS Security Groups
+---
+
+Follow these best practices to safely and effectively audit your AWS Security Groups.
+
+## When to run audits
+
+### Schedule regular audits
+
+Run security group audits on a regular schedule to prevent accumulation of unused resources:
+
+<Accordion title="Monthly audits">
+  **Recommended for:**
+  - Production accounts with frequent deployments
+  - Accounts with multiple teams creating resources
+  - Environments using Infrastructure as Code that may leave orphaned security groups
+
+  **Implementation:**
+  ```bash
+  # Add to crontab for monthly execution (1st of each month at 2 AM)
+  0 2 1 * * cd /path/to/auditor && python check_sg_usage.py
+  ```
+</Accordion>
+
+<Accordion title="Quarterly audits">
+  **Recommended for:**
+  - Development and staging accounts
+  - Stable environments with infrequent changes
+  - Accounts with strict change control processes
+
+  **Implementation:**
+  Set calendar reminders or use scheduled AWS Lambda functions to run the audit.
+</Accordion>
+
+<Accordion title="Ad-hoc audits">
+  **Run immediately after:**
+  - Major application decommissioning
+  - Infrastructure migrations (e.g., moving to containers)
+  - Post-incident cleanup
+  - Before cost optimization reviews
+</Accordion>
+
+### Optimal timing
+
+<Tip>
+  Run audits during off-peak hours (late night or early morning) to:
+  - Minimize impact of API throttling
+  - Avoid interference with active deployments
+  - Reduce the chance of race conditions during deletion
+</Tip>
+
+## Testing safely
+
+### Start with non-production accounts
+
+<Warning>
+  Never run the security group deletion feature in production accounts without testing first.
+</Warning>
+
+<Steps>
+  <Step title="Test in development">
+    Run the script in your development account first:
+    ```bash
+    # Verify you're in the correct account
+    aws sts get-caller_identity
+    
+    # Run the audit
+    python check_sg_usage.py
+    ```
+  </Step>
+  <Step title="Review the log file">
+    Examine the `{account_id}_sg_log.txt` file to understand what the script detected:
+    ```bash
+    # Check which security groups were identified as unused
+    grep "sin recursos asociados" {account_id}_sg_log.txt
+    ```
+  </Step>
+  <Step title="Verify results manually">
+    Before deleting, manually verify in the AWS Console that identified security groups are truly unused.
+  </Step>
+  <Step title="Test deletion">
+    When prompted, approve deletion of test security groups to verify the process works correctly.
+  </Step>
+</Steps>
+
+### Use the dry-run approach
+
+<Note>
+  The script has a built-in safety mechanism: it always asks for confirmation before deleting security groups (check_sg_usage.py:352).
+</Note>
+
+**Recommended workflow:**
+1. Run the audit and respond "no" to the deletion prompt
+2. Review the log file thoroughly
+3. Manually verify the unused security groups
+4. Run the script again and respond "yes" only after verification
+
+## Review logs before deletion
+
+### Understanding the log file
+
+The log file (`{account_id}_sg_log.txt`) contains detailed information about each security group:
+
+```
+Revisando el grupo de seguridad (1/50): sg-0abc123def456 (Application Load Balancer SG)
+	ALB/NLB Asociado: my-application-lb
+	Referenciado por otros SGs: sg-0def789ghi012
+```
+
+<Accordion title="Key indicators of active security groups">
+  Look for these associations in the log:
+  - `Instancia EC2 asociada` - Attached to EC2 instances
+  - `ALB/NLB Asociado` - Used by load balancers
+  - `Instancia RDS Asociada` - Attached to databases
+  - `ECS Servicio Asociado` - Used by ECS services
+  - `Referenciado por otros SGs` - Referenced in other security group rules
+  - Any other service associations (EKS, Lambda, etc.)
+
+  If a security group has none of these, it's a candidate for deletion.
+</Accordion>
+
+### What to verify before deletion
+
+<Steps>
+  <Step title="Check for recent creation">
+    Newly created security groups may not have resources attached yet. Verify creation date in the AWS Console before deleting.
+  </Step>
+  <Step title="Look for naming patterns">
+    Security groups with names like "prod-*", "*-live", or "critical-*" deserve extra scrutiny even if they appear unused.
+  </Step>
+  <Step title="Consider pending deployments">
+    Check with your team if any deployments are planned that might use the security groups.
+  </Step>
+  <Step title="Review default security groups">
+    The default security group for each VPC cannot be deleted, but the script may flag it as unused.
+  </Step>
+</Steps>
+
+## Backing up security group rules
+
+### Export before deletion
+
+Before deleting security groups, export their rules for future reference:
+
+```bash
+# Export all security group rules to JSON
+aws ec2 describe-security-groups --query 'SecurityGroups[*]' > security_groups_backup_$(date +%Y%m%d).json
+```
+
+<Tip>
+  Store backup files in version control or S3 with lifecycle policies to maintain a historical record.
+</Tip>
+
+### Document why security groups were deleted
+
+Keep a log of deletion activities:
+```bash
+# Create a deletion log
+echo "$(date): Deleted security groups: sg-abc123, sg-def456 - Reason: Decommissioned test environment" >> sg_deletion_log.txt
+```
+
+## Minimize false positives
+
+### Services not currently checked
+
+The script checks 20+ AWS services, but some services are not yet supported:
+
+<Warning>
+  The following AWS services are not currently checked:
+  - Lambda functions in VPCs
+  - Network Interfaces (ENIs) directly attached
+  - CloudFormation-managed resources
+  - Some newer AWS services
+
+  Security groups used only by these resources may be incorrectly flagged as unused.
+</Warning>
+
+**Mitigation:**
+- Always manually verify before deletion
+- Check the AWS Console for any resources using the security group
+- Use AWS CLI to search for network interfaces:
+  ```bash
+  aws ec2 describe-network-interfaces --filters Name=group-id,Values=sg-xxxxxxxxx
+  ```
+
+### Cross-account references
+
+If you use VPC peering or AWS PrivateLink, security groups may be referenced across accounts:
+
+<Note>
+  The script only checks resources within the current account. Security groups referenced in peering connections or shared services may appear unused.
+</Note>
+
+## Compliance and governance
+
+### Audit trail
+
+Maintain compliance by keeping audit records:
+
+<Steps>
+  <Step title="Save log files">
+    Archive all `{account_id}_sg_log.txt` files with timestamps:
+    ```bash
+    mv ${account_id}_sg_log.txt archives/sg_audit_$(date +%Y%m%d_%H%M%S).txt
+    ```
+  </Step>
+  <Step title="Track deletions">
+    Use AWS CloudTrail to monitor `DeleteSecurityGroup` API calls for accountability.
+  </Step>
+  <Step title="Document approval">
+    For production accounts, require approval from security or cloud governance teams before deletion.
+  </Step>
+</Steps>
+
+### Tag-based policies
+
+Implement tagging standards to prevent accidental deletion:
+
+```json
+{
+  "Tags": [
+    {"Key": "Environment", "Value": "Production"},
+    {"Key": "Owner", "Value": "platform-team"},
+    {"Key": "DoNotDelete", "Value": "true"}
+  ]
+}
+```
+
+<Tip>
+  Modify the script to skip security groups with specific tags like `DoNotDelete=true`.
+</Tip>
+
+## Multi-region strategies
+
+### Check all active regions
+
+Security groups are region-specific. Run the audit in every region where you have resources:
+
+```bash
+#!/bin/bash
+# Script to audit all regions
+
+REGIONS=("us-east-1" "us-west-2" "eu-west-1" "ap-southeast-1")
+
+for region in "${REGIONS[@]}"; do
+  echo "Auditing region: $region"
+  export AWS_DEFAULT_REGION=$region
+  python check_sg_usage.py
+  mv *_sg_log.txt logs/sg_audit_${region}_$(date +%Y%m%d).txt
+done
+```
+
+### Regional service availability
+
+<Note>
+  Some AWS services checked by the script (like Neptune, DocumentDB, or Amazon MQ) may not be available in all regions. The script will skip unavailable services automatically.
+</Note>
+
+## Cost optimization
+
+### Why unused security groups matter
+
+While security groups themselves don't incur direct costs, they:
+- Increase complexity and management overhead
+- Make compliance audits more difficult
+- Can lead to security misconfigurations
+- Clutter the AWS Console and API responses
+
+<Tip>
+  Combine security group audits with reviews of unused:
+  - Elastic IPs
+  - EBS volumes
+  - AMIs and snapshots
+  - Load balancers
+  
+  This provides comprehensive infrastructure cleanup.
+</Tip>
+
+## Security considerations
+
+### IAM permissions
+
+Use least-privilege IAM policies:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SecurityGroupAuditRead",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "elasticloadbalancing:Describe*",
+        "rds:Describe*",
+        "ecs:List*",
+        "ecs:Describe*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecurityGroupDelete",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteSecurityGroup",
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "ec2:ResourceTag/Environment": "Production"
+        }
+      }
+    }
+  ]
+}
+```
+
+<Warning>
+  This policy prevents deletion of production security groups. Adjust the condition based on your tagging strategy.
+</Warning>
+
+### Avoid default security group deletion
+
+Never delete the default security group for a VPC:
+
+<Note>
+  AWS does not allow deletion of default security groups. If you try to delete one, you'll receive a `CannotDelete` error.
+</Note>
+
+## Continuous improvement
+
+### Monitor script effectiveness
+
+Track metrics over time:
+- Number of unused security groups per audit
+- Time to complete audits (may indicate throttling)
+- False positive rate (manually verified as in-use)
+
+### Contribute improvements
+
+If you identify services not currently checked, consider contributing to the project:
+- Add support for additional AWS services
+- Improve error handling
+- Add parallel processing for better performance
+
+See the [Contributing guide](/advanced/contributing) for details.

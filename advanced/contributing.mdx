@@ -1,0 +1,427 @@
+---
+title: Contributing
+description: How to contribute to the AWS Security Group Auditor project
+---
+
+We welcome contributions to the AWS Security Group Auditor! This guide will help you get started.
+
+## Quick start for contributors
+
+<Steps>
+  <Step title="Fork the repository">
+    Visit the [GitHub repository](https://github.com/rruisan/AWS-SecurityGroup-Auditor) and click the "Fork" button to create your own copy.
+  </Step>
+  <Step title="Clone your fork">
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/AWS-SecurityGroup-Auditor.git
+    cd AWS-SecurityGroup-Auditor
+    ```
+  </Step>
+  <Step title="Create a feature branch">
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
+  </Step>
+  <Step title="Make your changes">
+    Edit the code, add features, or fix bugs.
+  </Step>
+  <Step title="Test your changes">
+    Run the test suite to ensure everything works:
+    ```bash
+    pytest test_check_sg_usage.py -v
+    ```
+  </Step>
+  <Step title="Commit and push">
+    ```bash
+    git add .
+    git commit -m "Add: description of your changes"
+    git push origin feature/your-feature-name
+    ```
+  </Step>
+  <Step title="Open a pull request">
+    Go to the original repository and click "New Pull Request" to submit your changes for review.
+  </Step>
+</Steps>
+
+## Development setup
+
+### Prerequisites
+
+Ensure you have the following installed:
+- Python 3.7 or higher
+- pip (Python package manager)
+- AWS CLI (for testing)
+
+### Install dependencies
+
+```bash
+# Install boto3 for AWS API interactions
+pip install boto3
+
+# Install testing dependencies
+pip install pytest moto
+```
+
+<Tip>
+  Use a virtual environment to isolate dependencies:
+  ```bash
+  python -m venv venv
+  source venv/bin/activate  # On Windows: venv\Scripts\activate
+  pip install boto3 pytest moto
+  ```
+</Tip>
+
+### Project structure
+
+```
+AWS-SecurityGroup-Auditor/
+├── check_sg_usage.py           # Main script
+├── test_check_sg_usage.py      # Test suite
+├── README.md                   # Project documentation
+└── LICENSE                     # MIT License
+```
+
+## Running tests
+
+### Run the full test suite
+
+```bash
+pytest test_check_sg_usage.py -v
+```
+
+### Run specific tests
+
+```bash
+# Run only the print_both function test
+pytest test_check_sg_usage.py::test_print_both -v
+```
+
+### Understanding the test framework
+
+The project uses:
+- **pytest**: Python testing framework
+- **moto**: Library for mocking AWS services
+
+<Note>
+  The current test suite (test_check_sg_usage.py:1-29) includes a basic test for the `print_both` function. Contributors are encouraged to add more comprehensive tests.
+</Note>
+
+### Writing new tests
+
+When adding new features, include tests using moto to mock AWS services:
+
+```python
+import pytest
+from moto import mock_ec2
+import boto3
+
+@mock_ec2
+def test_security_group_detection():
+    # Create a mock EC2 client
+    ec2 = boto3.client('ec2', region_name='us-east-1')
+    
+    # Create a test security group
+    response = ec2.create_security_group(
+        GroupName='test-sg',
+        Description='Test security group'
+    )
+    
+    # Your test logic here
+    assert response['GroupId'].startswith('sg-')
+```
+
+## Code style guidelines
+
+### Python conventions
+
+Follow these conventions to maintain code consistency:
+
+<Accordion title="Naming conventions">
+  - **Variables**: Use lowercase with underscores: `security_groups`, `sg_id`
+  - **Functions**: Use lowercase with underscores: `print_both()`, `describe_security_groups()`
+  - **Constants**: Use uppercase with underscores: `OUTPUT_FILE`, `MAX_RETRIES`
+</Accordion>
+
+<Accordion title="Comments and documentation">
+  - Add comments in Spanish to match the existing codebase style
+  - Document complex logic with inline comments
+  - Use docstrings for functions:
+    ```python
+    def print_both(message, file):
+        """Print message to both console and log file.
+        
+        Args:
+            message: The message to print
+            file: File object to write to
+        """
+        print(message)
+        print(message, file=file)
+    ```
+</Accordion>
+
+<Accordion title="Code formatting">
+  - Use 4 spaces for indentation (no tabs)
+  - Maximum line length: 120 characters (flexible for readability)
+  - Add blank lines between logical sections
+  - Follow PEP 8 style guide where applicable
+</Accordion>
+
+### Error handling
+
+When adding new AWS service checks, include proper error handling:
+
+```python
+try:
+    # AWS service API call
+    instances = service.describe_resources()['Resources']
+    for instance in instances:
+        # Process resources
+        pass
+except Exception as e:
+    # Log the error but continue processing other services
+    print_both(f"Error checking service: {e}", log_file)
+    # Don't raise the exception - allow script to continue
+```
+
+<Warning>
+  The current script (check_sg_usage.py:354-359) only includes error handling for security group deletion. When adding new features, ensure errors don't crash the entire audit process.
+</Warning>
+
+## Adding support for new AWS services
+
+### Steps to add a new service
+
+<Steps>
+  <Step title="Create the boto3 client">
+    Add the client at the top of the script (check_sg_usage.py:9-30):
+    ```python
+    lambda_client = boto3.client('lambda')
+    ```
+  </Step>
+  <Step title="Add service check logic">
+    In the main loop (check_sg_usage.py:61-336), add your service check:
+    ```python
+    # Lambda functions - Check Lambda functions in VPC
+    try:
+        lambda_functions = lambda_client.list_functions()['Functions']
+        for function in lambda_functions:
+            vpc_config = function.get('VpcConfig', {})
+            sg_ids = vpc_config.get('SecurityGroupIds', [])
+            if sg_id in sg_ids:
+                print_both(f"\tLambda Function Asociada: {function['FunctionName']}", log_file)
+                asociaciones_sg[sg_id] = True
+    except Exception as e:
+        print_both(f"Error verificando Lambda: {e}", log_file)
+    ```
+  </Step>
+  <Step title="Update documentation">
+    Update the README and documentation to list the newly supported service.
+  </Step>
+  <Step title="Add tests">
+    Create moto-based tests for the new service check:
+    ```python
+    @mock_lambda
+    @mock_ec2
+    def test_lambda_security_group_detection():
+        # Test implementation
+        pass
+    ```
+  </Step>
+  <Step title="Update IAM permissions">
+    Document the required IAM permissions for the new service in the troubleshooting guide.
+  </Step>
+</Steps>
+
+### Services to consider adding
+
+Contributions adding support for these services are especially welcome:
+- AWS Lambda (functions in VPCs)
+- Network Interfaces (ENIs) directly
+- AWS Batch compute environments
+- Amazon AppRunner services
+- Amazon Managed Workflows for Apache Airflow (MWAA)
+- AWS Cloud9 environments
+- Amazon Lightsail instances
+
+## Filing issues
+
+### Before filing an issue
+
+<Steps>
+  <Step title="Search existing issues">
+    Check if your issue has already been reported: [GitHub Issues](https://github.com/rruisan/AWS-SecurityGroup-Auditor/issues)
+  </Step>
+  <Step title="Verify it's a bug">
+    Ensure the issue is reproducible and not due to configuration or permissions.
+  </Step>
+  <Step title="Gather information">
+    Collect:
+    - Python version
+    - boto3 version
+    - AWS region
+    - Error messages and stack traces
+    - Anonymized log output
+  </Step>
+</Steps>
+
+### Issue templates
+
+<Accordion title="Bug report template">
+  ```markdown
+  **Description**
+  A clear description of the bug.
+
+  **Steps to Reproduce**
+  1. Run the script with...
+  2. Choose option...
+  3. Error appears...
+
+  **Expected Behavior**
+  What you expected to happen.
+
+  **Actual Behavior**
+  What actually happened.
+
+  **Environment**
+  - Python version: 3.9.0
+  - boto3 version: 1.26.0
+  - AWS region: us-east-1
+  - Operating system: Ubuntu 22.04
+
+  **Error Output**
+  ```
+  Paste error messages here
+  ```
+
+  **Additional Context**
+  Any other relevant information.
+  ```
+</Accordion>
+
+<Accordion title="Feature request template">
+  ```markdown
+  **Feature Description**
+  Describe the feature you'd like to see.
+
+  **Use Case**
+  Explain why this feature would be useful.
+
+  **Proposed Implementation**
+  If you have ideas on how to implement this, share them.
+
+  **AWS Service**
+  If requesting support for a new AWS service, specify which one.
+
+  **Alternatives Considered**
+  Any alternative solutions you've considered.
+  ```
+</Accordion>
+
+## Pull request guidelines
+
+### Good pull requests
+
+<Note>
+  - Focus on a single feature or bug fix per PR
+  - Include tests for new functionality
+  - Update documentation as needed
+  - Write clear commit messages
+  - Follow existing code style
+</Note>
+
+### PR description template
+
+```markdown
+## Description
+Brief description of the changes.
+
+## Changes Made
+- Added support for AWS Lambda functions
+- Improved error handling for ECS service checks
+- Updated documentation
+
+## Testing
+- [ ] Tested manually with real AWS resources
+- [ ] Added automated tests
+- [ ] Verified no regression in existing functionality
+
+## Related Issues
+Closes #123
+
+## Additional Notes
+Any other context about the PR.
+```
+
+### Review process
+
+After submitting your PR:
+1. Maintainers will review your code
+2. Address any feedback or requested changes
+3. Once approved, your PR will be merged
+4. You'll be credited as a contributor!
+
+<Tip>
+  Be patient during the review process. Maintainers may take a few days to respond.
+</Tip>
+
+## Code of conduct
+
+### Be respectful
+
+- Use welcoming and inclusive language
+- Respect differing viewpoints and experiences
+- Accept constructive criticism gracefully
+- Focus on what's best for the community
+
+### Collaboration
+
+- Help others learn and grow
+- Share knowledge generously
+- Credit others for their contributions
+- Be patient with newcomers
+
+## License
+
+This project is licensed under the MIT License. By contributing, you agree that your contributions will be licensed under the same MIT License.
+
+<Accordion title="MIT License summary">
+  The MIT License allows:
+  - Commercial use
+  - Modification
+  - Distribution
+  - Private use
+
+  With the requirements:
+  - Include the original license and copyright notice
+
+  Full license text: [LICENSE](https://github.com/rruisan/AWS-SecurityGroup-Auditor/blob/main/LICENSE)
+</Accordion>
+
+## Recognition
+
+Contributors will be recognized in:
+- The project's README
+- GitHub's contributors page
+- Release notes (for significant contributions)
+
+## Getting help
+
+If you need help contributing:
+
+<Steps>
+  <Step title="Read the docs">
+    Review the [Troubleshooting](/advanced/troubleshooting) and [Best Practices](/advanced/best-practices) guides.
+  </Step>
+  <Step title="Ask in issues">
+    Open a GitHub issue with the "question" label.
+  </Step>
+  <Step title="Review existing PRs">
+    Look at merged pull requests to see examples of good contributions.
+  </Step>
+</Steps>
+
+---
+
+<Note>
+  Thank you for contributing to AWS Security Group Auditor! Your improvements help the entire community manage AWS security groups more effectively.
+</Note>

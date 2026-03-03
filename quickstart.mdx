@@ -1,80 +1,281 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Run your first AWS security group audit and identify unused security groups in minutes
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
+This guide will walk you through running your first security group audit using AWS Security Group Auditor. You'll learn how to execute the tool, interpret the results, and safely clean up unused security groups.
 
-### Step 1: Set up your local environment
+<Note>
+Before starting, make sure you've completed the [installation](/installation) steps and configured your AWS credentials.
+</Note>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+## Running your first audit
 
-### Step 2: Deploy your changes
+<Steps>
+  <Step title="Navigate to the script directory">
+    Open your terminal and navigate to the directory containing `check_sg_usage.py`:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```bash
+    cd /path/to/AWS-SecurityGroup-Auditor
+    ```
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Execute the auditor">
+    Run the script using Python 3:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    python3 check_sg_usage.py
+    ```
 
-### Step 3: Go live
+    The tool will immediately start the audit process.
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Monitor the audit progress">
+    As the script runs, you'll see real-time output showing:
+
+    - Your AWS account ID
+    - Progress indicators for each security group
+    - Associated resources for each security group
+
+    **Example output:**
+
+    ```
+    Verificación de uso de grupos de seguridad para la cuenta AWS: 123456789012
+    ------------------------------------------------
+    Revisando el grupo de seguridad (1/45): sg-0abc123def456 (Web Server Security Group)
+        Instancia EC2 asociada: i-0abc123def, Estado: running
+        ALB/NLB Asociado: my-application-lb
+    ------------------------------------------------
+    Revisando el grupo de seguridad (2/45): sg-0def456abc789 (Database Security Group)
+        Instancia RDS Asociada: my-database-instance
+        Referenciado por otros SGs: sg-0abc123def456
+    ------------------------------------------------
+    Revisando el grupo de seguridad (3/45): sg-0ghi789jkl012 (Old Dev Environment)
+    ```
+  </Step>
+
+  <Step title="Review the log file">
+    The tool automatically generates a detailed log file named `{account_id}_sg_log.txt` in the same directory.
+
+    ```bash
+    cat 123456789012_sg_log.txt
+    ```
+
+    This file contains the complete audit results for future reference.
+  </Step>
+
+  <Step title="Review unused security groups">
+    After auditing all security groups, the tool displays a summary:
+
+    ```
+    ***RESULTADO***
+
+    Los siguientes grupos de seguridad no tienen recursos asociados: sg-0ghi789jkl012, sg-0mno345pqr678
+    ```
+
+    These are security groups with no attached resources or references.
+  </Step>
+
+  <Step title="Decide on deletion (optional)">
+    The tool will prompt you to confirm deletion:
+
+    ```
+    ¿Quieres borrar estos grupos de seguridad? (sí/no):
+    ```
+
+    **To delete unused security groups**, type `sí`, `si`, `s`, `yes`, or `y` and press Enter.
+
+    **To keep them**, type `no` or `n` and press Enter.
+
+    <Warning>
+    Deletion is immediate and cannot be undone. Always review the log file before confirming deletion.
+    </Warning>
+  </Step>
+
+  <Step title="Confirm deletion results">
+    If you chose to delete, you'll see confirmation for each security group:
+
+    ```
+    Grupo de seguridad sg-0ghi789jkl012 borrado exitosamente.
+    Grupo de seguridad sg-0mno345pqr678 borrado exitosamente.
+    ```
+
+    Or error messages if deletion fails:
+
+    ```
+    Error al borrar el grupo de seguridad sg-0xyz: An error occurred (DependencyViolation)...
+    ```
+  </Step>
+</Steps>
+
+## Understanding the output
+
+The auditor checks each security group against 25+ AWS services. Here's what different output messages mean:
+
+### Resource associations
+
+When a security group is in use, you'll see lines like:
+
+| Output | Meaning |
+|--------|--------|
+| `Instancia EC2 asociada: i-0abc123def, Estado: running` | Attached to an EC2 instance |
+| `ALB/NLB Asociado: my-load-balancer` | Attached to an Application/Network Load Balancer |
+| `ELB Clásico Asociado: my-classic-lb` | Attached to a Classic Load Balancer |
+| `Instancia RDS Asociada: my-database` | Attached to an RDS database |
+| `ECS Servicio Asociado: my-service en Cluster: arn:aws:ecs:...` | Attached to an ECS service |
+| `Referenciado por otros SGs: sg-0abc123, sg-0def456` | Referenced by other security groups |
+| `VPC Endpoint con SG: vpce-0abc123` | Attached to a VPC endpoint |
+
+### No associations
+
+If a security group has no output after its header, it means no resources are using it.
+
+## Common use cases
+
+### Audit-only mode
+
+Run the tool to generate a report without deleting anything:
+
+```bash
+python3 check_sg_usage.py
+```
+
+When prompted to delete, answer `no`. You'll have a complete audit log without making changes.
+
+### Scheduled audits
+
+Run regular audits to track security group usage over time:
+
+```bash
+# Run weekly audit and save with timestamp
+python3 check_sg_usage.py
+mv *_sg_log.txt "sg_audit_$(date +%Y%m%d).txt"
+```
+
+### Pre-cleanup review
+
+Before cleaning up, review the log file to understand dependencies:
+
+```bash
+python3 check_sg_usage.py
+# Review the log
+less *_sg_log.txt
+# Run again and confirm deletion
+python3 check_sg_usage.py
+```
+
+## Services checked
+
+The auditor examines security group associations across these services:
+
+<CardGroup cols={3}>
+  <Card title="Compute" icon="server">
+    - EC2 instances
+    - ECS services
+    - EKS node groups
+    - Elastic Beanstalk
+  </Card>
+  
+  <Card title="Databases" icon="database">
+    - RDS instances
+    - Neptune
+    - DocumentDB clusters
+    - Redshift clusters
+    - ElastiCache
+  </Card>
+  
+  <Card title="Networking" icon="network-wired">
+    - ELB (Classic)
+    - ALB/NLB (ELBv2)
+    - VPC Endpoints
+    - VPN Connections
+  </Card>
+  
+  <Card title="Analytics" icon="chart-line">
+    - Amazon MSK (Kafka)
+    - Glue jobs
+    - Elasticsearch
+  </Card>
+  
+  <Card title="Development" icon="code">
+    - CodeBuild projects
+    - SageMaker endpoints
+  </Card>
+  
+  <Card title="Other" icon="ellipsis">
+    - FSx file systems
+    - Amazon MQ brokers
+    - Transfer Family
+    - WorkSpaces
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Permission errors
+
+If you see permission errors, ensure your IAM user or role has the required read permissions:
+
+```
+botocore.exceptions.ClientError: An error occurred (AccessDenied)
+```
+
+**Solution**: Review the [IAM permissions](/installation#required-iam-permissions) section and update your policy.
+
+### Deletion failures
+
+Some security groups cannot be deleted due to dependencies:
+
+```
+Error al borrar el grupo de seguridad sg-xxx: An error occurred (DependencyViolation)
+```
+
+**Common causes:**
+- Security group is referenced by another security group's rules
+- Resource using it was created after the audit started
+- Default VPC security group (cannot be deleted)
+
+**Solution**: Review the log file to identify dependencies, or run the audit again to get updated information.
+
+### No output or hanging
+
+If the script appears to hang on certain services:
+
+- Large AWS accounts may take time to audit all resources
+- Some services (like ECS) require pagination and may take longer
+- Network issues can cause timeouts
+
+**Solution**: Be patient, or check your AWS region and network connectivity.
+
+## Best practices
+
+<Tip>
+**Run audits regularly**: Schedule monthly or quarterly audits to keep security groups clean and organized.
+</Tip>
+
+<Tip>
+**Review before deletion**: Always examine the log file before confirming any deletions to avoid accidentally removing security groups you need.
+</Tip>
+
+<Tip>
+**Test in non-production first**: Run your first audit in a development or staging account to understand the tool's behavior.
+</Tip>
+
+<Warning>
+**Backup your configuration**: Consider exporting security group configurations before deletion, especially in production environments.
+</Warning>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you've completed your first audit, consider:
 
-<CardGroup cols={2}>
+- Setting up automated audits using cron or AWS Lambda
+- Integrating the tool into your infrastructure-as-code workflows
+- Creating custom reports from the log files
+- Implementing tagging strategies to track security group ownership
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
+<Card title="View source code" icon="github" href="https://github.com/rruisan/AWS-SecurityGroup-Auditor">
+  Explore the full source code and contribute to the project
 </Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

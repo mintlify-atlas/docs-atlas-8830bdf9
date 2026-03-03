@@ -1,0 +1,352 @@
+---
+title: Supported AWS services
+description: Complete list of AWS services that the Security Group Auditor checks for security group associations
+---
+
+The AWS Security Group Auditor scans **22 AWS services** across your account to identify which resources are using each security group. This comprehensive check helps you safely identify and remove unused security groups.
+
+## Compute services
+
+<CardGroup cols={2}>
+  <Card title="EC2" icon="server">
+    **Resources checked**: EC2 instances
+    
+    The tool checks all EC2 instances in your account and identifies their associated security groups and instance states.
+    
+    ```python
+    # Source: check_sg_usage.py:70-79
+    instances = ec2.describe_instances(
+        Filters=[{'Name': 'instance.group-id', 'Values': [sg_id]}]
+    )
+    ```
+  </Card>
+
+  <Card title="Elastic Beanstalk" icon="leaf">
+    **Resources checked**: Elastic Beanstalk environments and their underlying EC2 instances
+    
+    Scans all Elastic Beanstalk environments and checks the security groups of their managed EC2 instances.
+    
+    ```python
+    # Source: check_sg_usage.py:207-221
+    eb_environments = elasticbeanstalk.describe_environments()
+    resources = elasticbeanstalk.describe_environment_resources(
+        EnvironmentId=env['EnvironmentId']
+    )
+    ```
+  </Card>
+</CardGroup>
+
+## Container services
+
+<CardGroup cols={2}>
+  <Card title="ECS" icon="docker">
+    **Resources checked**: ECS services with awsvpc network mode
+    
+    Scans all ECS clusters and services, checking network configurations for security group associations. Handles pagination for accounts with many services.
+    
+    ```python
+    # Source: check_sg_usage.py:106-139
+    clusters = ecs.list_clusters()['clusterArns']
+    detailed_services = ecs.describe_services(
+        cluster=cluster_arn, 
+        services=service_chunk
+    )
+    ```
+  </Card>
+
+  <Card title="EKS" icon="dharmachakra">
+    **Resources checked**: EKS node groups and cluster security groups
+    
+    Checks all EKS clusters and their associated node groups for security group usage.
+    
+    ```python
+    # Source: check_sg_usage.py:142-151
+    eks_clusters = eks.list_clusters()['clusters']
+    nodegroup = eks.describe_nodegroup(
+        clusterName=cluster_name, 
+        nodegroupName=nodegroup_name
+    )
+    ```
+  </Card>
+</CardGroup>
+
+## Load balancing
+
+<CardGroup cols={2}>
+  <Card title="Classic Load Balancer (ELB)" icon="balance-scale">
+    **Resources checked**: Classic Load Balancers
+    
+    Identifies security groups attached to classic Elastic Load Balancers.
+    
+    ```python
+    # Source: check_sg_usage.py:80-85
+    elbs = elb.describe_load_balancers()
+    ```
+  </Card>
+
+  <Card title="Application/Network Load Balancer (ELBv2)" icon="network-wired">
+    **Resources checked**: Application Load Balancers and Network Load Balancers
+    
+    Checks ALBs and NLBs for security group associations.
+    
+    ```python
+    # Source: check_sg_usage.py:87-92
+    elbv2_load_balancers = elbv2.describe_load_balancers()
+    ```
+  </Card>
+</CardGroup>
+
+## Database services
+
+<CardGroup cols={2}>
+  <Card title="RDS" icon="database">
+    **Resources checked**: RDS database instances
+    
+    Scans all RDS instances and their VPC security group configurations.
+    
+    ```python
+    # Source: check_sg_usage.py:94-104
+    dbs = rds.describe_db_instances()['DBInstances']
+    ```
+  </Card>
+
+  <Card title="Neptune" icon="circle-nodes">
+    **Resources checked**: Neptune database instances
+    
+    Checks Neptune graph database instances for security group associations.
+    
+    ```python
+    # Source: check_sg_usage.py:190-196
+    neptune_instances = neptune.describe_db_instances()
+    ```
+  </Card>
+
+  <Card title="DocumentDB" icon="file-code">
+    **Resources checked**: DocumentDB clusters
+    
+    Scans DocumentDB clusters and their VPC security groups.
+    
+    ```python
+    # Source: check_sg_usage.py:198-204
+    docdb_clusters = docdb.describe_db_clusters()
+    ```
+  </Card>
+
+  <Card title="Redshift" icon="warehouse">
+    **Resources checked**: Redshift clusters
+    
+    Identifies security groups associated with Redshift data warehouse clusters.
+    
+    ```python
+    # Source: check_sg_usage.py:165-171
+    redshift_clusters = redshift.describe_clusters()
+    ```
+  </Card>
+</CardGroup>
+
+## Caching and messaging
+
+<CardGroup cols={2}>
+  <Card title="ElastiCache" icon="bolt">
+    **Resources checked**: ElastiCache clusters (Redis and Memcached)
+    
+    Checks both Redis and Memcached ElastiCache clusters for security group usage.
+    
+    ```python
+    # Source: check_sg_usage.py:174-180
+    cache_clusters = elasticache.describe_cache_clusters(
+        ShowCacheNodeInfo=True
+    )
+    ```
+  </Card>
+
+  <Card title="Amazon MSK" icon="stream">
+    **Resources checked**: Managed Streaming for Apache Kafka clusters
+    
+    Scans MSK (Kafka) clusters and their broker node security groups.
+    
+    ```python
+    # Source: check_sg_usage.py:182-188
+    kafka_clusters = kafka.list_clusters()['ClusterInfoList']
+    ```
+  </Card>
+
+  <Card title="Amazon MQ" icon="message">
+    **Resources checked**: Amazon MQ brokers
+    
+    Checks Amazon MQ message broker instances for security group associations.
+    
+    ```python
+    # Source: check_sg_usage.py:287-295
+    mq_brokers = mq.list_brokers()['BrokerSummaries']
+    broker = mq.describe_broker(BrokerId=broker_summary['BrokerId'])
+    ```
+  </Card>
+</CardGroup>
+
+## Analytics and machine learning
+
+<CardGroup cols={2}>
+  <Card title="SageMaker" icon="brain">
+    **Resources checked**: SageMaker endpoints
+    
+    Identifies security groups used by SageMaker model endpoints in VPC configurations.
+    
+    ```python
+    # Source: check_sg_usage.py:223-231
+    sm_endpoints = sagemaker.list_endpoints()['Endpoints']
+    endpoint_desc = sagemaker.describe_endpoint(
+        EndpointName=endpoint['EndpointName']
+    )
+    ```
+  </Card>
+
+  <Card title="AWS Glue" icon="table">
+    **Resources checked**: Glue jobs and connections
+    
+    Scans Glue ETL jobs and their connection configurations for security groups.
+    
+    ```python
+    # Source: check_sg_usage.py:251-261
+    glue_jobs = glue.get_jobs()['Jobs']
+    connection_info = glue.get_connection(Name=connection_name)
+    ```
+  </Card>
+
+  <Card title="Elasticsearch Service" icon="magnifying-glass">
+    **Resources checked**: Elasticsearch domains
+    
+    Checks Elasticsearch (OpenSearch) domains deployed in VPCs.
+    
+    ```python
+    # Source: check_sg_usage.py:264-272
+    es_domains = es.list_domain_names()['DomainNames']
+    domain_config = es.describe_elasticsearch_domain(
+        DomainName=domain_name
+    )
+    ```
+  </Card>
+</CardGroup>
+
+## Developer tools
+
+<Card title="CodeBuild" icon="code">
+  **Resources checked**: CodeBuild projects
+  
+  Scans CodeBuild projects that run in VPCs and checks their security group configurations.
+  
+  ```python
+  # Source: check_sg_usage.py:154-162
+  codebuild_projects = codebuild.list_projects()['projects']
+  project = codebuild.batch_get_projects(names=[project_name])
+  vpc_config = project.get('vpcConfig', {})
+  ```
+</Card>
+
+## Storage and file systems
+
+<Card title="Amazon FSx" icon="folder">
+  **Resources checked**: FSx file systems (Windows File Server, Lustre, NetApp ONTAP, OpenZFS)
+  
+  Identifies security groups associated with all FSx file system types.
+  
+  ```python
+  # Source: check_sg_usage.py:297-303
+  fsx_file_systems = fsx.describe_file_systems()['FileSystems']
+  ```
+</Card>
+
+## File transfer and virtual desktops
+
+<CardGroup cols={2}>
+  <Card title="AWS Transfer Family" icon="arrow-right-arrow-left">
+    **Resources checked**: Transfer Family servers (SFTP, FTPS, FTP)
+    
+    Checks Transfer Family servers deployed in VPC endpoints for security group usage.
+    
+    ```python
+    # Source: check_sg_usage.py:237-248
+    transfer_servers = transfer.list_servers()['Servers']
+    server_details = transfer.describe_server(ServerId=server_id)
+    vpc_config = ec2.describe_vpc_endpoints(
+        VpcEndpointIds=[endpoint_details['VpcEndpointId']]
+    )
+    ```
+  </Card>
+
+  <Card title="Amazon WorkSpaces" icon="desktop">
+    **Resources checked**: WorkSpaces directories
+    
+    Scans WorkSpaces directories for workspace security group configurations.
+    
+    ```python
+    # Source: check_sg_usage.py:305-310
+    workspaces_directories = workspaces.describe_workspace_directories()
+    ```
+  </Card>
+</CardGroup>
+
+## Networking
+
+<CardGroup cols={2}>
+  <Card title="VPC Endpoints" icon="plug">
+    **Resources checked**: VPC endpoints (Interface and Gateway Load Balancer endpoints)
+    
+    Identifies security groups attached to VPC endpoints.
+    
+    ```python
+    # Source: check_sg_usage.py:312-317
+    vpc_endpoints = ec2.describe_vpc_endpoints()['VpcEndpoints']
+    ```
+  </Card>
+
+  <Card title="VPN Connections" icon="shield">
+    **Resources checked**: Site-to-Site VPN connections
+    
+    Checks VPN connections for security group references through customer gateway tags.
+    
+    ```python
+    # Source: check_sg_usage.py:275-285
+    vpn_connections = ec2.describe_vpn_connections()
+    customer_gateway = ec2.describe_customer_gateways(
+        CustomerGatewayIds=[customer_gateway_id]
+    )
+    ```
+  </Card>
+</CardGroup>
+
+## Security group cross-references
+
+<Note>
+  The tool also checks if security groups are **referenced by other security groups** in ingress or egress rules. This is important because a security group can be "in use" even if no resources are directly attached to it.
+</Note>
+
+```python
+# Source: check_sg_usage.py:319-333
+for sg in security_groups:
+    for perm in sg.get('IpPermissions', []) + sg.get('IpPermissionsEgress', []):
+        for user_id_group_pair in perm.get('UserIdGroupPairs', []):
+            if user_id_group_pair['GroupId'] == sg_id:
+                referenced_by_sgs.append(sg['GroupId'])
+```
+
+If a security group is referenced by another security group's rules, it's considered "in use" and won't be flagged for deletion.
+
+## Coverage summary
+
+The auditor provides comprehensive coverage across:
+
+- **Compute**: EC2, ECS, EKS, Elastic Beanstalk, Lambda (via VPC config)
+- **Databases**: RDS, Neptune, DocumentDB, Redshift, ElastiCache
+- **Networking**: ELB, ALB, NLB, VPC Endpoints, VPN
+- **Storage**: FSx
+- **Analytics**: Glue, Elasticsearch, MSK
+- **ML**: SageMaker
+- **Developer Tools**: CodeBuild
+- **Messaging**: Amazon MQ
+- **Transfer**: Transfer Family, WorkSpaces
+- **Security Group Rules**: Cross-references between security groups
+
+<Warning>
+  Some services like Lambda functions in VPCs are checked indirectly through EC2 network interfaces. The tool covers the vast majority of AWS services that support security groups.
+</Warning>

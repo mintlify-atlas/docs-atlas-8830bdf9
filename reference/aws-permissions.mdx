@@ -1,0 +1,620 @@
+---
+title: Required AWS permissions
+description: IAM permissions needed to run the Security Group Auditor and optional deletion capabilities
+---
+
+The AWS Security Group Auditor requires specific IAM permissions to scan your AWS account. You can configure different permission levels depending on whether you want read-only auditing or the ability to delete unused security groups.
+
+## Permission levels
+
+<CardGroup cols={2}>
+  <Card title="Read-only mode" icon="eye">
+    **Recommended for most use cases**
+    
+    Allows the tool to audit and report on security group usage without making any changes to your account.
+  </Card>
+
+  <Card title="Delete mode" icon="trash">
+    **For automated cleanup**
+    
+    Includes read permissions plus the ability to delete unused security groups when you confirm.
+  </Card>
+</CardGroup>
+
+## Required permissions by service
+
+The tool makes boto3 API calls to 22 AWS services. Below are all the permissions extracted from the actual source code.
+
+### Identity and account
+
+<ParamField path="sts:GetCallerIdentity" type="required">
+  Used to retrieve your AWS account ID for log file naming.
+  
+  ```python
+  # Source: check_sg_usage.py:33-34
+  sts = boto3.client('sts')
+  account_id = sts.get_caller_identity()["Account"]
+  ```
+</ParamField>
+
+### EC2 and networking
+
+<AccordionGroup>
+  <Accordion title="EC2 permissions (7 actions)">
+    <ParamField path="ec2:DescribeSecurityGroups" type="required">
+      Lists all security groups in your account - the foundation of the audit.
+      
+      ```python
+      # Source: check_sg_usage.py:49
+      security_groups = ec2.describe_security_groups()['SecurityGroups']
+      ```
+    </ParamField>
+
+    <ParamField path="ec2:DescribeInstances" type="required">
+      Identifies EC2 instances using each security group and checks Elastic Beanstalk instances.
+      
+      ```python
+      # Source: check_sg_usage.py:70-74, 216
+      instances = ec2.describe_instances(
+          Filters=[{'Name': 'instance.group-id', 'Values': [sg_id]}]
+      )
+      ```
+    </ParamField>
+
+    <ParamField path="ec2:DescribeVpcEndpoints" type="required">
+      Checks VPC endpoints and Transfer Family server endpoints for security groups.
+      
+      ```python
+      # Source: check_sg_usage.py:243, 313
+      vpc_endpoints = ec2.describe_vpc_endpoints()['VpcEndpoints']
+      ```
+    </ParamField>
+
+    <ParamField path="ec2:DescribeVpnConnections" type="required">
+      Scans Site-to-Site VPN connections.
+      
+      ```python
+      # Source: check_sg_usage.py:276
+      vpn_connections = ec2.describe_vpn_connections()
+      ```
+    </ParamField>
+
+    <ParamField path="ec2:DescribeCustomerGateways" type="required">
+      Checks customer gateways associated with VPN connections.
+      
+      ```python
+      # Source: check_sg_usage.py:282
+      customer_gateway = ec2.describe_customer_gateways()
+      ```
+    </ParamField>
+
+    <ParamField path="ec2:DeleteSecurityGroup" type="optional">
+      **Only required for delete mode**. Allows deletion of unused security groups.
+      
+      ```python
+      # Source: check_sg_usage.py:356
+      ec2.delete_security_group(GroupId=sg_id)
+      ```
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Load Balancer permissions (2 actions)">
+    <ParamField path="elasticloadbalancing:DescribeLoadBalancers" type="required">
+      Lists Classic Load Balancers (ELB) and their security groups.
+      
+      ```python
+      # Source: check_sg_usage.py:81
+      elbs = elb.describe_load_balancers()['LoadBalancerDescriptions']
+      ```
+    </ParamField>
+
+    <ParamField path="elasticloadbalancing:DescribeLoadBalancers" type="required" name="elbv2">
+      Lists Application and Network Load Balancers (ALB/NLB).
+      
+      ```python
+      # Source: check_sg_usage.py:88
+      elbv2_load_balancers = elbv2.describe_load_balancers()
+      ```
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+### Database services
+
+<AccordionGroup>
+  <Accordion title="Database permissions (4 services)">
+    <ParamField path="rds:DescribeDBInstances" type="required">
+      Checks RDS database instances.
+      
+      ```python
+      # Source: check_sg_usage.py:95
+      dbs = rds.describe_db_instances()['DBInstances']
+      ```
+    </ParamField>
+
+    <ParamField path="neptune:DescribeDBInstances" type="required">
+      Checks Neptune graph database instances.
+      
+      ```python
+      # Source: check_sg_usage.py:191
+      neptune_instances = neptune.describe_db_instances()
+      ```
+    </ParamField>
+
+    <ParamField path="docdb:DescribeDBClusters" type="required">
+      Checks DocumentDB clusters.
+      
+      ```python
+      # Source: check_sg_usage.py:199
+      docdb_clusters = docdb.describe_db_clusters()
+      ```
+    </ParamField>
+
+    <ParamField path="redshift:DescribeClusters" type="required">
+      Checks Redshift data warehouse clusters.
+      
+      ```python
+      # Source: check_sg_usage.py:166
+      redshift_clusters = redshift.describe_clusters()
+      ```
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+### Container and compute services
+
+<AccordionGroup>
+  <Accordion title="Container orchestration (2 services)">
+    <ParamField path="ecs:ListClusters" type="required">
+      Lists ECS clusters to scan for services.
+      
+      ```python
+      # Source: check_sg_usage.py:107
+      clusters = ecs.list_clusters()['clusterArns']
+      ```
+    </ParamField>
+
+    <ParamField path="ecs:ListServices" type="required">
+      Lists services within each ECS cluster.
+      
+      ```python
+      # Source: check_sg_usage.py:112-114
+      service_list_response = ecs.list_services(cluster=cluster_arn)
+      ```
+    </ParamField>
+
+    <ParamField path="ecs:DescribeServices" type="required">
+      Gets network configuration details for ECS services (handles 10 services per call).
+      
+      ```python
+      # Source: check_sg_usage.py:124-127
+      detailed_services_response = ecs.describe_services(
+          cluster=cluster_arn, services=service_chunk
+      )
+      ```
+    </ParamField>
+
+    <ParamField path="eks:ListClusters" type="required">
+      Lists EKS clusters.
+      
+      ```python
+      # Source: check_sg_usage.py:143
+      eks_clusters = eks.list_clusters()['clusters']
+      ```
+    </ParamField>
+
+    <ParamField path="eks:ListNodegroups" type="required">
+      Lists node groups within each EKS cluster.
+      
+      ```python
+      # Source: check_sg_usage.py:145
+      nodegroups = eks.list_nodegroups(clusterName=cluster_name)
+      ```
+    </ParamField>
+
+    <ParamField path="eks:DescribeNodegroup" type="required">
+      Gets security group details for EKS node groups.
+      
+      ```python
+      # Source: check_sg_usage.py:147
+      nodegroup = eks.describe_nodegroup(
+          clusterName=cluster_name, nodegroupName=nodegroup_name
+      )
+      ```
+    </ParamField>
+  </Accordion>
+
+  <Accordion title="Platform and developer services (2 services)">
+    <ParamField path="elasticbeanstalk:DescribeEnvironments" type="required">
+      Lists Elastic Beanstalk environments.
+      
+      ```python
+      # Source: check_sg_usage.py:208
+      eb_environments = elasticbeanstalk.describe_environments()
+      ```
+    </ParamField>
+
+    <ParamField path="elasticbeanstalk:DescribeEnvironmentResources" type="required">
+      Gets EC2 instances managed by Elastic Beanstalk.
+      
+      ```python
+      # Source: check_sg_usage.py:213
+      resources = elasticbeanstalk.describe_environment_resources(
+          EnvironmentId=env['EnvironmentId']
+      )
+      ```
+    </ParamField>
+
+    <ParamField path="codebuild:ListProjects" type="required">
+      Lists CodeBuild projects.
+      
+      ```python
+      # Source: check_sg_usage.py:155
+      codebuild_projects = codebuild.list_projects()['projects']
+      ```
+    </ParamField>
+
+    <ParamField path="codebuild:BatchGetProjects" type="required">
+      Gets VPC configuration for CodeBuild projects.
+      
+      ```python
+      # Source: check_sg_usage.py:157
+      project = codebuild.batch_get_projects(names=[project_name])
+      ```
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+### Caching and messaging
+
+<AccordionGroup>
+  <Accordion title="Caching and streaming (3 services)">
+    <ParamField path="elasticache:DescribeCacheClusters" type="required">
+      Checks ElastiCache clusters (Redis and Memcached).
+      
+      ```python
+      # Source: check_sg_usage.py:175
+      cache_clusters = elasticache.describe_cache_clusters(
+          ShowCacheNodeInfo=True
+      )
+      ```
+    </ParamField>
+
+    <ParamField path="kafka:ListClusters" type="required">
+      Lists Amazon MSK (Kafka) clusters.
+      
+      ```python
+      # Source: check_sg_usage.py:183
+      kafka_clusters = kafka.list_clusters()['ClusterInfoList']
+      ```
+    </ParamField>
+
+    <ParamField path="mq:ListBrokers" type="required">
+      Lists Amazon MQ message brokers.
+      
+      ```python
+      # Source: check_sg_usage.py:288
+      mq_brokers = mq.list_brokers()['BrokerSummaries']
+      ```
+    </ParamField>
+
+    <ParamField path="mq:DescribeBroker" type="required">
+      Gets security group details for MQ brokers.
+      
+      ```python
+      # Source: check_sg_usage.py:290
+      broker = mq.describe_broker(BrokerId=broker_summary['BrokerId'])
+      ```
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+### Analytics and machine learning
+
+<AccordionGroup>
+  <Accordion title="Data and ML services (3 services)">
+    <ParamField path="sagemaker:ListEndpoints" type="required">
+      Lists SageMaker model endpoints.
+      
+      ```python
+      # Source: check_sg_usage.py:224
+      sm_endpoints = sagemaker.list_endpoints()['Endpoints']
+      ```
+    </ParamField>
+
+    <ParamField path="sagemaker:DescribeEndpoint" type="required">
+      Gets VPC configuration for SageMaker endpoints.
+      
+      ```python
+      # Source: check_sg_usage.py:226
+      endpoint_desc = sagemaker.describe_endpoint(
+          EndpointName=endpoint['EndpointName']
+      )
+      ```
+    </ParamField>
+
+    <ParamField path="glue:GetJobs" type="required">
+      Lists AWS Glue ETL jobs.
+      
+      ```python
+      # Source: check_sg_usage.py:252
+      glue_jobs = glue.get_jobs()['Jobs']
+      ```
+    </ParamField>
+
+    <ParamField path="glue:GetConnection" type="required">
+      Gets connection details for Glue jobs.
+      
+      ```python
+      # Source: check_sg_usage.py:257
+      connection_info = glue.get_connection(Name=connection_name)
+      ```
+    </ParamField>
+
+    <ParamField path="es:ListDomainNames" type="required">
+      Lists Elasticsearch/OpenSearch domains.
+      
+      ```python
+      # Source: check_sg_usage.py:265
+      es_domains = es.list_domain_names()['DomainNames']
+      ```
+    </ParamField>
+
+    <ParamField path="es:DescribeElasticsearchDomain" type="required">
+      Gets VPC configuration for Elasticsearch domains.
+      
+      ```python
+      # Source: check_sg_usage.py:268
+      domain_config = es.describe_elasticsearch_domain(
+          DomainName=domain_name
+      )
+      ```
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+### Storage and file transfer
+
+<AccordionGroup>
+  <Accordion title="Storage services (3 services)">
+    <ParamField path="fsx:DescribeFileSystems" type="required">
+      Lists Amazon FSx file systems.
+      
+      ```python
+      # Source: check_sg_usage.py:298
+      fsx_file_systems = fsx.describe_file_systems()
+      ```
+    </ParamField>
+
+    <ParamField path="transfer:ListServers" type="required">
+      Lists AWS Transfer Family servers.
+      
+      ```python
+      # Source: check_sg_usage.py:237
+      transfer_servers = transfer.list_servers()['Servers']
+      ```
+    </ParamField>
+
+    <ParamField path="transfer:DescribeServer" type="required">
+      Gets VPC endpoint configuration for Transfer servers.
+      
+      ```python
+      # Source: check_sg_usage.py:240
+      server_details = transfer.describe_server(ServerId=server_id)
+      ```
+    </ParamField>
+
+    <ParamField path="workspaces:DescribeWorkspaceDirectories" type="required">
+      Lists Amazon WorkSpaces directories.
+      
+      ```python
+      # Source: check_sg_usage.py:306
+      workspaces_directories = workspaces.describe_workspace_directories()
+      ```
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+## IAM policy examples
+
+### Read-only policy (recommended)
+
+<Note>
+  This policy provides all permissions needed to audit security groups without the ability to make changes.
+</Note>
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SecurityGroupAuditorReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeInstances",
+        "ec2:DescribeVpcEndpoints",
+        "ec2:DescribeVpnConnections",
+        "ec2:DescribeCustomerGateways",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "rds:DescribeDBInstances",
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "ecs:DescribeServices",
+        "eks:ListClusters",
+        "eks:ListNodegroups",
+        "eks:DescribeNodegroup",
+        "codebuild:ListProjects",
+        "codebuild:BatchGetProjects",
+        "redshift:DescribeClusters",
+        "elasticache:DescribeCacheClusters",
+        "kafka:ListClusters",
+        "neptune:DescribeDBInstances",
+        "docdb:DescribeDBClusters",
+        "elasticbeanstalk:DescribeEnvironments",
+        "elasticbeanstalk:DescribeEnvironmentResources",
+        "sagemaker:ListEndpoints",
+        "sagemaker:DescribeEndpoint",
+        "transfer:ListServers",
+        "transfer:DescribeServer",
+        "glue:GetJobs",
+        "glue:GetConnection",
+        "es:ListDomainNames",
+        "es:DescribeElasticsearchDomain",
+        "mq:ListBrokers",
+        "mq:DescribeBroker",
+        "fsx:DescribeFileSystems",
+        "workspaces:DescribeWorkspaceDirectories",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+### Full access policy (with deletion)
+
+<Warning>
+  This policy includes `ec2:DeleteSecurityGroup` which allows the tool to permanently delete security groups. Use with caution and only in environments where automated cleanup is required.
+</Warning>
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SecurityGroupAuditorReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeInstances",
+        "ec2:DescribeVpcEndpoints",
+        "ec2:DescribeVpnConnections",
+        "ec2:DescribeCustomerGateways",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "rds:DescribeDBInstances",
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "ecs:DescribeServices",
+        "eks:ListClusters",
+        "eks:ListNodegroups",
+        "eks:DescribeNodegroup",
+        "codebuild:ListProjects",
+        "codebuild:BatchGetProjects",
+        "redshift:DescribeClusters",
+        "elasticache:DescribeCacheClusters",
+        "kafka:ListClusters",
+        "neptune:DescribeDBInstances",
+        "docdb:DescribeDBClusters",
+        "elasticbeanstalk:DescribeEnvironments",
+        "elasticbeanstalk:DescribeEnvironmentResources",
+        "sagemaker:ListEndpoints",
+        "sagemaker:DescribeEndpoint",
+        "transfer:ListServers",
+        "transfer:DescribeServer",
+        "glue:GetJobs",
+        "glue:GetConnection",
+        "es:ListDomainNames",
+        "es:DescribeElasticsearchDomain",
+        "mq:ListBrokers",
+        "mq:DescribeBroker",
+        "fsx:DescribeFileSystems",
+        "workspaces:DescribeWorkspaceDirectories",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecurityGroupDeletion",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DeleteSecurityGroup"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+## Setting up permissions
+
+### Option 1: Create an IAM user
+
+1. Create a new IAM user in the AWS Console
+2. Attach the read-only policy above
+3. Generate access keys for the user
+4. Configure AWS CLI with the credentials:
+
+```bash
+aws configure
+# Enter Access Key ID, Secret Access Key, and region
+```
+
+### Option 2: Use an IAM role (recommended for EC2)
+
+If you're running the tool from an EC2 instance:
+
+1. Create an IAM role with the read-only policy
+2. Attach the role to your EC2 instance
+3. The tool will automatically use the instance role credentials
+
+### Option 3: Use AWS SSO
+
+```bash
+aws sso login --profile your-profile
+export AWS_PROFILE=your-profile
+python check_sg_usage.py
+```
+
+## Permission scoping
+
+<Note>
+  All permissions require `Resource: "*"` because the tool needs to scan all resources across your account. AWS does not support resource-level permissions for most describe/list operations.
+</Note>
+
+If you need to restrict the tool to specific regions, use a condition:
+
+```json
+{
+  "Condition": {
+    "StringEquals": {
+      "aws:RequestedRegion": ["us-east-1", "us-west-2"]
+    }
+  }
+}
+```
+
+## Troubleshooting permission issues
+
+If you encounter permission errors:
+
+1. **Check CloudTrail logs** to see which specific API call failed
+2. **Test individual permissions** using AWS CLI:
+   ```bash
+   aws ec2 describe-security-groups
+   aws ecs list-clusters
+   aws rds describe-db-instances
+   ```
+3. **Verify region access** - ensure your credentials work in the region you're scanning
+4. **Check service control policies (SCPs)** if using AWS Organizations
+
+## Security best practices
+
+<CardGroup cols={2}>
+  <Card title="Principle of least privilege" icon="lock">
+    Start with the read-only policy. Only add deletion permissions if you need automated cleanup.
+  </Card>
+
+  <Card title="Use temporary credentials" icon="clock">
+    Use AWS SSO or assume-role for time-limited access instead of long-lived access keys.
+  </Card>
+
+  <Card title="Enable CloudTrail" icon="file-lines">
+    Monitor all API calls made by the tool to ensure compliance and troubleshooting.
+  </Card>
+
+  <Card title="Rotate credentials" icon="rotate">
+    If using IAM user access keys, rotate them regularly (every 90 days minimum).
+  </Card>
+</CardGroup>

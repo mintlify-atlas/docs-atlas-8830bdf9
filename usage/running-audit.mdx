@@ -1,0 +1,156 @@
+---
+title: Running an audit
+description: Learn how to execute the security group audit and understand what happens during the scan process
+---
+
+The AWS Security Group Auditor scans your AWS account to identify which security groups are in use and which ones are unused.
+
+## Command syntax
+
+To run the audit, execute the following command from the directory containing the script:
+
+```bash
+python check_sg_usage.py
+```
+
+<Note>
+Ensure you have AWS credentials configured before running the audit. The tool uses boto3 to access your AWS account through your default credentials or environment variables.
+</Note>
+
+## What happens during execution
+
+<Steps>
+  <Step title="Account identification">
+    The tool retrieves your AWS account ID using STS (Security Token Service) and displays it in the console:
+    
+    ```
+    Verificación de uso de grupos de seguridad para la cuenta AWS: 123456789012
+    ```
+  </Step>
+
+  <Step title="Security group enumeration">
+    All security groups in your account are retrieved and counted. The tool initializes a tracking dictionary to monitor which security groups have associated resources.
+  </Step>
+
+  <Step title="Progressive scanning">
+    Each security group is analyzed sequentially with a progress indicator showing the current position:
+    
+    ```
+    ------------------------------------------------
+    Revisando el grupo de seguridad (1/47): sg-0a1b2c3d4e5f6g7h8 (Web Server Security Group)
+    ------------------------------------------------
+    Revisando el grupo de seguridad (2/47): sg-1b2c3d4e5f6g7h8i9 (Database Security Group)
+    ```
+  </Step>
+
+  <Step title="Resource association checks">
+    For each security group, the tool checks associations with 20+ AWS services including:
+    - EC2 instances
+    - Load balancers (ELB, ALB, NLB)
+    - RDS databases
+    - ECS services and tasks
+    - EKS clusters and node groups
+    - ElastiCache clusters
+    - Redshift clusters
+    - Lambda functions in VPCs
+    - VPC endpoints
+    - And many more AWS resources
+    
+    When associations are found, they're displayed immediately:
+    
+    ```
+    	Instancia EC2 asociada: i-0a1b2c3d4e5f6g7h8, Estado: running
+    	ALB/NLB Asociado: production-alb
+    	Instancia RDS Asociada: production-db
+    ```
+  </Step>
+
+  <Step title="Security group reference check">
+    The tool also identifies if other security groups reference the current security group in their rules:
+    
+    ```
+    	Referenciado por otros SGs: sg-9i8h7g6f5e4d3c2b1, sg-2c3d4e5f6g7h8i9j0
+    ```
+  </Step>
+
+  <Step title="Final summary">
+    After scanning all security groups, a summary is displayed showing which security groups have no associated resources.
+  </Step>
+</Steps>
+
+## Progress indicators
+
+The audit displays real-time progress as it scans:
+
+- **Counter format**: `(current/total)` shows your position in the scan
+- **Separator lines**: `------------------------------------------------` clearly delineate each security group section
+- **Indented output**: Associated resources are shown with tabs (`\t`) for easy readability
+
+<Tip>
+For accounts with many security groups, the scan can take several minutes. Each security group requires multiple API calls to check all possible AWS service associations.
+</Tip>
+
+## Execution time
+
+The audit duration depends on:
+
+- **Number of security groups**: More security groups = longer scan time
+- **Number of resources**: Accounts with many resources require more API calls
+- **AWS API response times**: Network latency and AWS service responsiveness affect speed
+
+**Typical execution times**:
+- Small accounts (10-20 SGs): 1-3 minutes
+- Medium accounts (50-100 SGs): 5-10 minutes  
+- Large accounts (200+ SGs): 15-30 minutes
+
+## Output log file
+
+All console output is simultaneously written to a log file named:
+
+```
+{account_id}_sg_log.txt
+```
+
+For example: `123456789012_sg_log.txt`
+
+<Note>
+This log file is created in the same directory where you run the script and contains the complete audit results for later reference.
+</Note>
+
+## Example console output
+
+Here's what a typical audit session looks like:
+
+```
+Verificación de uso de grupos de seguridad para la cuenta AWS: 123456789012
+------------------------------------------------
+Revisando el grupo de seguridad (1/47): sg-0a1b2c3d4e5f6g7h8 (Web Server Security Group)
+	Instancia EC2 asociada: i-0a1b2c3d4e5f6g7h8, Estado: running
+	ALB/NLB Asociado: production-alb
+
+------------------------------------------------
+Revisando el grupo de seguridad (2/47): sg-1b2c3d4e5f6g7h8i9 (Database Security Group)
+	Instancia RDS Asociada: production-db
+	Referenciado por otros SGs: sg-0a1b2c3d4e5f6g7h8
+
+------------------------------------------------
+Revisando el grupo de seguridad (3/47): sg-2c3d4e5f6g7h8i9j0 (Unused Old SG)
+
+------------------------------------------------
+Revisando el grupo de seguridad (4/47): sg-3d4e5f6g7h8i9j0k1 (Cache Security Group)
+	Instancia ElastiCache Asociada: production-redis
+
+Proceso completado.
+
+***RESULTADO***
+
+Los siguientes grupos de seguridad no tienen recursos asociados: sg-2c3d4e5f6g7h8i9j0
+
+¿Quieres borrar estos grupos de seguridad? (sí/no):
+```
+
+## Next steps
+
+After the audit completes, you can:
+- [Review the detailed results](/usage/interpreting-results) in the log file
+- [Delete unused security groups](/usage/deleting-security-groups) through the interactive prompt
