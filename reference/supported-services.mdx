@@ -336,7 +336,7 @@ If a security group is referenced by another security group's rules, it's consid
 
 The auditor provides comprehensive coverage across:
 
-- **Compute**: EC2, ECS, EKS, Elastic Beanstalk, Lambda (via VPC config)
+- **Compute**: EC2, ECS, EKS, Elastic Beanstalk
 - **Databases**: RDS, Neptune, DocumentDB, Redshift, ElastiCache
 - **Networking**: ELB, ALB, NLB, VPC Endpoints, VPN
 - **Storage**: FSx
@@ -347,6 +347,6 @@ The auditor provides comprehensive coverage across:
 - **Transfer**: Transfer Family, WorkSpaces
 - **Security Group Rules**: Cross-references between security groups
 
-<Warning>
-  Some services like Lambda functions in VPCs are checked indirectly through EC2 network interfaces. The tool covers the vast majority of AWS services that support security groups.
-</Warning>
+<Note>
+  The tool covers the vast majority of AWS services that support security groups. If you need support for additional services, contributions are welcome - see the [contributing guide](/advanced/contributing).
+</Note>

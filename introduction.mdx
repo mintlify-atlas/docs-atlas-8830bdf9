@@ -5,7 +5,7 @@ description: A comprehensive Python CLI tool that audits AWS Security Groups to 
 
 ## What is AWS Security Group Auditor?
 
-AWS Security Group Auditor is a powerful Python CLI tool designed to help you maintain a clean and secure AWS infrastructure by identifying security groups that are no longer in use. The tool performs a comprehensive audit across 25+ AWS services, tracking which security groups are actively attached to resources and which are orphaned.
+AWS Security Group Auditor is a powerful Python CLI tool designed to help you maintain a clean and secure AWS infrastructure by identifying security groups that are no longer in use. The tool performs a comprehensive audit across 20+ AWS services, tracking which security groups are actively attached to resources and which are orphaned.
 
 <Note>
 The tool generates detailed logs showing every security group's associations, making it easy to understand your security posture before making any changes.
@@ -26,7 +26,7 @@ This tool solves these problems by providing complete visibility into security g
 
 <CardGroup cols={2}>
   <Card title="Comprehensive scanning" icon="magnifying-glass">
-    Audits security groups across 25+ AWS services including EC2, RDS, ECS, EKS, Lambda, ElastiCache, and more
+    Audits security groups across 20+ AWS services including EC2, RDS, ECS, EKS, ElastiCache, and more
   </Card>
   
   <Card title="Cross-reference detection" icon="link">
@@ -46,7 +46,7 @@ This tool solves these problems by providing complete visibility into security g
 
 The auditor checks security group associations across:
 
-- **Compute**: EC2 instances, ECS services, EKS clusters, Elastic Beanstalk, Lambda
+- **Compute**: EC2 instances, ECS services, EKS clusters, Elastic Beanstalk
 - **Load Balancing**: Classic ELB, Application Load Balancers (ALB), Network Load Balancers (NLB)
 - **Databases**: RDS, Neptune, DocumentDB, Redshift, ElastiCache
 - **Networking**: VPC Endpoints, VPN Connections, Transfer Family servers
